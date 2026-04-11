@@ -50,8 +50,15 @@ async def _ingest(
             if not url:
                 raise ValueError("URL is empty")
             logger.info(f"Crawling URL: {url}")
-            raw_text = await crawl_url(url)
-            pages = [raw_text] if raw_text else []
+            try:
+                raw_text = await asyncio.wait_for(crawl_url(url), timeout=60.0)
+            except asyncio.TimeoutError:
+                raise ValueError(f"URL 爬取超时（60s）: {url}")
+            except Exception as ce:
+                raise ValueError(f"URL 爬取失败: {ce}")
+            if not raw_text or len(raw_text.strip()) < 50:
+                raise ValueError(f"页面内容为空或过短（{len(raw_text) if raw_text else 0} 字符）")
+            pages = [raw_text]
         else:
             from knowledge.parser import parse_file
             file_path = row["file_path"]

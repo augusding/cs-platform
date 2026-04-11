@@ -103,10 +103,10 @@ const STATUS_STYLE: Record<string, string> = {
   failed: 'bg-red-50 text-red-500',
 }
 const STATUS_LABEL: Record<string, string> = {
-  pending: '待处理',
+  pending:    '排队中',
   processing: '处理中',
-  ready: '已就绪',
-  failed: '失败',
+  ready:      '已就绪',
+  failed:     '失败',
 }
 
 export default function Knowledge() {
@@ -128,6 +128,8 @@ export default function Knowledge() {
   const [editId, setEditId] = useState<string | null>(null)
   const [editQ, setEditQ] = useState('')
   const [editA, setEditA] = useState('')
+
+  const [isPolling, setIsPolling] = useState(false)
 
   useEffect(() => {
     api.get('/bots').then((r) => {
@@ -164,9 +166,13 @@ export default function Knowledge() {
     const hasPending = sources.some(
       (s) => s.status === 'pending' || s.status === 'processing',
     )
-    if (!hasPending) return
+    if (!hasPending) {
+      setIsPolling(false)
+      return
+    }
+    setIsPolling(true)
     const t = setInterval(() => loadDocs(), 5000)
-    return () => clearInterval(t)
+    return () => { clearInterval(t); setIsPolling(false) }
   }, [botId, sources])
 
   const upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -303,6 +309,11 @@ export default function Knowledge() {
             <span className="text-xs text-gray-400">
               PDF / Excel / Word，最大 20MB
             </span>
+            {isPolling && (
+              <span className="text-xs text-blue-400 animate-pulse ml-2">
+                ↻ 自动刷新中...
+              </span>
+            )}
           </div>
           <div className="space-y-2">
             {sources
@@ -317,8 +328,11 @@ export default function Knowledge() {
                       {src.name}
                     </p>
                     {src.error_msg && (
-                      <p className="text-xs text-red-400 mt-0.5">
-                        {src.error_msg}
+                      <p className="text-xs text-red-400 mt-0.5 break-all"
+                         title={src.error_msg}>
+                        {src.error_msg.length > 120
+                          ? src.error_msg.slice(0, 120) + '…（鼠标悬停查看完整信息）'
+                          : src.error_msg}
                       </p>
                     )}
                     <p className="text-xs text-gray-400 mt-0.5">
@@ -330,6 +344,12 @@ export default function Knowledge() {
                     className={`text-xs px-2 py-1 rounded-full flex-shrink-0 ${
                       STATUS_STYLE[src.status] || ''
                     }`}
+                    title={
+                      src.status === 'pending'    ? '等待 Worker 处理，请确认 Worker 正在运行' :
+                      src.status === 'processing' ? '正在解析和向量化，请稍候...' :
+                      src.status === 'ready'      ? `已完成，共 ${src.chunk_count} 个知识块` :
+                      src.status === 'failed'     ? (src.error_msg || '处理失败') : ''
+                    }
                   >
                     {STATUS_LABEL[src.status] || src.status}
                   </span>
@@ -366,8 +386,11 @@ export default function Knowledge() {
                       {src.name}
                     </p>
                     {src.error_msg && (
-                      <p className="text-xs text-red-400 mt-0.5">
-                        {src.error_msg}
+                      <p className="text-xs text-red-400 mt-0.5 break-all"
+                         title={src.error_msg}>
+                        {src.error_msg.length > 120
+                          ? src.error_msg.slice(0, 120) + '…（鼠标悬停查看完整信息）'
+                          : src.error_msg}
                       </p>
                     )}
                     <p className="text-xs text-gray-400 mt-0.5">
@@ -379,6 +402,12 @@ export default function Knowledge() {
                     className={`text-xs px-2 py-1 rounded-full flex-shrink-0 ${
                       STATUS_STYLE[src.status] || ''
                     }`}
+                    title={
+                      src.status === 'pending'    ? '等待 Worker 处理，请确认 Worker 正在运行' :
+                      src.status === 'processing' ? '正在解析和向量化，请稍候...' :
+                      src.status === 'ready'      ? `已完成，共 ${src.chunk_count} 个知识块` :
+                      src.status === 'failed'     ? (src.error_msg || '处理失败') : ''
+                    }
                   >
                     {STATUS_LABEL[src.status] || src.status}
                   </span>
