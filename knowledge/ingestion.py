@@ -23,11 +23,18 @@ async def _ingest(
 ) -> None:
     import asyncpg
 
+    from config import settings
     from knowledge.chunker import chunk_pages
     from knowledge.embedder import embed_texts
     from knowledge.vector_store import insert_chunks
 
-    pool = await asyncpg.create_pool(dsn=db_url, min_size=1, max_size=3)
+    # 优先使用 Worker 自身 env 的 DATABASE_URL：无论 Worker 跑在 Windows
+    # 主机（localhost）还是 docker-compose worker service（postgres 主机名），
+    # 都用它自己的视角，不依赖入队方的 db_url 参数。
+    effective_url = settings.DATABASE_URL or db_url
+    pool = await asyncpg.create_pool(
+        dsn=effective_url, min_size=1, max_size=3
+    )
 
     try:
         row = await pool.fetchrow(
