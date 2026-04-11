@@ -15,12 +15,19 @@
   store：bot_store.py 完整 CRUD（create/list/get/update/delete/rotate_api_key/count）
   路由：api/routes/bots.py 六端点（含 free plan 配额 402）
   冒烟验证：CREATE→201 / LIST / GET / UPDATE / ROTATE / 配额限制 / DELETE 全部通过
+- Week 2 Day 3-5：知识库摄取 Pipeline
+  knowledge/parser.py（PDF/Excel/Word）/ chunker.py（中英文分块）
+  knowledge/embedder.py（Qwen text-embedding-v3，批量 25/批）
+  knowledge/vector_store.py（Milvus，每 bot 独立 collection）
+  knowledge/ingestion.py（RQ Worker 入口，asyncpg 更新状态）
+  api/routes/knowledge.py：上传/列表/详情/删除/FAQ CRUD
+  冒烟验证：上传 docx → 201 pending + job_id；LIST/GET/FAQ/DELETE 均通过
+  注意：pymilvus 依赖（marshmallow 兼容性）需修复才能实际完成摄取
 
 [进行中]
-- Week 2 Day 3-5：知识库摄取（upload → parse → chunk → embed → Milvus）
+- Week 3：RAG 核心引擎 + Widget
 
 [待开始]
-- Week 3：RAG核心引擎 + Widget
 - Week 4：Query Transform + Admin Console
 - Week 5：询盘捕获 + 通知 + 人工接管
 - Week 6：套餐/配额 + 支付
@@ -30,6 +37,8 @@
 - queue/ 目录已改名为 job_queue/（避免与Python内置queue模块冲突）
 - alembic.ini 中文注释已改为英文（Windows GBK编码问题）
 - 开发阶段邀请token直接在API响应中返回，生产环境需改为发邮件
+- pymilvus 2.4.0 依赖 environs → marshmallow<3.13，当前环境 marshmallow 更新，
+  导致 `import pymilvus` 报 `__version_info__` 不存在；需 pin marshmallow 或升级 pymilvus
 
 [仓库]
 GitHub: https://github.com/augusding/cs-platform

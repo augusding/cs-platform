@@ -12,7 +12,7 @@ from api.middleware import jwt_middleware
 from api.routes.health import register as reg_health
 from api.routes.auth import register as reg_auth
 from api.routes.bots import register as reg_bots
-# Week 2：from api.routes.knowledge import register as reg_knowledge
+from api.routes.knowledge import register as reg_knowledge
 # Week 3：from api.routes.chat import register as reg_chat
 # Week 4：from api.routes.admin import register as reg_admin
 # Week 5：from api.routes.leads import register as reg_leads
@@ -56,7 +56,7 @@ def create_app() -> web.Application:
     reg_health(app)
     reg_auth(app)
     reg_bots(app)
-    # reg_knowledge(app)  # Week 2 解注释
+    reg_knowledge(app)
     # reg_chat(app)       # Week 3 解注释
     # reg_admin(app)      # Week 4 解注释
     # reg_leads(app)      # Week 5 解注释
