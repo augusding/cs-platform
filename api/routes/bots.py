@@ -31,9 +31,13 @@ def _serialize(value):
 
 
 def _bot_to_dict(bot: dict) -> dict:
-    """Serialize a bot row: UUID→str, datetime→isoformat, add api-key preview."""
+    """Serialize a bot row: UUID→str, datetime→isoformat, hide full api key.
+
+    The full `bot_api_key` is only returned by `/api/bots/{id}/reveal-key`;
+    list/detail endpoints emit `bot_api_key_preview` (masked) instead.
+    """
     d = {k: _serialize(v) for k, v in bot.items()}
-    key = d.get("bot_api_key")
+    key = d.pop("bot_api_key", None)
     if isinstance(key, str) and len(key) >= 16:
         d["bot_api_key_preview"] = key[:12] + "..." + key[-4:]
     return d
@@ -48,6 +52,44 @@ async def list_bots_handler(request: web.Request) -> web.Response:
         "data": [_bot_to_dict(b) for b in bots],
         "meta": {"total": len(bots)},
     })
+
+
+# ── GET /api/bots/{bot_id}/detail ───────────────────────
+@routes.get("/api/bots/{bot_id}/detail")
+async def get_bot_detail_handler(request: web.Request) -> web.Response:
+    """返回含完整配置的 Bot 详情 + 知识库统计。"""
+    db = request.app["db"]
+    bot = await bot_store.get_bot(
+        db, request.match_info["bot_id"], request["tenant_id"]
+    )
+    if not bot:
+        raise web.HTTPForbidden(reason="Bot not found or access denied")
+
+    from store.base import fetch_val
+    chunk_total = await fetch_val(
+        db,
+        """
+        SELECT COALESCE(SUM(chunk_count), 0)
+        FROM knowledge_sources
+        WHERE bot_id = $1 AND status = 'ready'
+        """,
+        request.match_info["bot_id"],
+    )
+    faq_count = await fetch_val(
+        db,
+        """
+        SELECT COUNT(*) FROM faq_items
+        WHERE bot_id = $1 AND is_active = TRUE
+        """,
+        request.match_info["bot_id"],
+    )
+
+    d = _bot_to_dict(bot)
+    d["stats"] = {
+        "chunk_total": int(chunk_total or 0),
+        "faq_count": int(faq_count or 0),
+    }
+    return web.json_response({"data": d})
 
 
 # ── POST /api/bots ───────────────────────────────────────

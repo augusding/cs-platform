@@ -41,11 +41,13 @@ export default function Sessions() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-500">
             <tr>
-              {['会话ID', '访客ID', '语言', '消息数', '状态', '开始时间'].map((h) => (
-                <th key={h} className="px-4 py-3 text-left font-medium">
-                  {h}
-                </th>
-              ))}
+              {['会话ID', '访客ID', '语言', '消息数', '状态', '开始时间', '操作'].map(
+                (h) => (
+                  <th key={h} className="px-4 py-3 text-left font-medium">
+                    {h}
+                  </th>
+                ),
+              )}
             </tr>
           </thead>
           <tbody>
@@ -71,11 +73,19 @@ export default function Sessions() {
                 <td className="px-4 py-3 text-gray-400 text-xs">
                   {new Date(s.started_at).toLocaleString('zh')}
                 </td>
+                <td className="px-4 py-3">
+                  <button
+                    className="text-xs text-blue-500 hover:underline"
+                    onClick={() => (window.location.href = `/sessions/${s.id}`)}
+                  >
+                    查看
+                  </button>
+                </td>
               </tr>
             ))}
             {sessions.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
                   暂无会话记录
                 </td>
               </tr>

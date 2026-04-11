@@ -1,8 +1,10 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Bots from './pages/Bots'
+import BotDetail from './pages/BotDetail'
 import Knowledge from './pages/Knowledge'
 import Sessions from './pages/Sessions'
+import SessionDetail from './pages/SessionDetail'
 import Leads from './pages/Leads'
 import Billing from './pages/Billing'
 import Login from './pages/Login'
@@ -79,8 +81,10 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/bots" element={<Bots />} />
+                  <Route path="/bots/:botId" element={<BotDetail />} />
                   <Route path="/knowledge" element={<Knowledge />} />
                   <Route path="/sessions" element={<Sessions />} />
+                  <Route path="/sessions/:sessionId" element={<SessionDetail />} />
                   <Route path="/leads" element={<Leads />} />
                   <Route path="/billing" element={<Billing />} />
                 </Routes>

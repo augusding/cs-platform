@@ -1,9 +1,13 @@
 """Bot 数据访问层"""
+import json
 import os
 
 import asyncpg
 
 from store.base import fetch_one, fetch_all, execute_returning, execute, fetch_val
+
+# JSONB 列：asyncpg 需要 str 而非 dict/list
+_JSONB_COLUMNS = {"lead_capture_fields", "private_domain_config"}
 
 
 def _generate_bot_api_key() -> str:
@@ -74,6 +78,12 @@ async def update_bot(
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return await get_bot(pool, bot_id, tenant_id)
+
+    # JSONB 列必须以 str 形式传入 asyncpg
+    for col in _JSONB_COLUMNS & updates.keys():
+        v = updates[col]
+        if v is not None and not isinstance(v, str):
+            updates[col] = json.dumps(v, ensure_ascii=False)
 
     set_clause = ", ".join(
         f"{col} = ${i + 3}" for i, col in enumerate(updates)

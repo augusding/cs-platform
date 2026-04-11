@@ -276,5 +276,63 @@ async def list_faq(request: web.Request) -> web.Response:
     })
 
 
+# ── DELETE /api/bots/{bot_id}/faq/{faq_id} ──────────────
+@routes.delete("/api/bots/{bot_id}/faq/{faq_id}")
+async def delete_faq(request: web.Request) -> web.Response:
+    _require_admin(request)
+    db = request.app["db"]
+    bot_id = request.match_info["bot_id"]
+    faq_id = request.match_info["faq_id"]
+    tenant_id = request["tenant_id"]
+
+    await _get_bot_or_403(db, bot_id, tenant_id)
+    result = await execute(
+        db,
+        """
+        DELETE FROM faq_items
+        WHERE id = $1 AND bot_id = $2 AND tenant_id = $3
+        """,
+        faq_id, bot_id, tenant_id,
+    )
+    if result == "DELETE 0":
+        raise web.HTTPForbidden(reason="FAQ not found or access denied")
+    return web.json_response({"data": None, "meta": {"affected": 1}})
+
+
+# ── PUT /api/bots/{bot_id}/faq/{faq_id} ─────────────────
+@routes.put("/api/bots/{bot_id}/faq/{faq_id}")
+async def update_faq(request: web.Request) -> web.Response:
+    _require_admin(request)
+    db = request.app["db"]
+    bot_id = request.match_info["bot_id"]
+    faq_id = request.match_info["faq_id"]
+    tenant_id = request["tenant_id"]
+
+    await _get_bot_or_403(db, bot_id, tenant_id)
+
+    data = await request.json()
+    question = (data.get("question") or "").strip()
+    answer = (data.get("answer") or "").strip()
+    if not question or not answer:
+        raise web.HTTPBadRequest(reason="question and answer are required")
+
+    row = await execute_returning(
+        db,
+        """
+        UPDATE faq_items
+        SET question = $1, answer = $2, priority = $3
+        WHERE id = $4 AND bot_id = $5 AND tenant_id = $6
+        RETURNING id, question, answer, priority, is_active
+        """,
+        question, answer, int(data.get("priority", 0)),
+        faq_id, bot_id, tenant_id,
+    )
+    if not row:
+        raise web.HTTPForbidden(reason="FAQ not found or access denied")
+    return web.json_response({
+        "data": {**dict(row), "id": str(row["id"])}
+    })
+
+
 def register(app: web.Application) -> None:
     app.router.add_routes(routes)

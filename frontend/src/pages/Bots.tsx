@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 
 interface Bot {
@@ -18,6 +19,7 @@ const LANG_LABEL: Record<string, string> = {
 }
 
 export default function Bots() {
+  const navigate = useNavigate()
   const [bots, setBots] = useState<Bot[]>([])
   const [name, setName] = useState('')
   const [lang, setLang] = useState('zh')
@@ -201,6 +203,12 @@ export default function Bots() {
                 >
                   预览
                 </a>
+                <button
+                  className="text-sm text-gray-500 hover:underline"
+                  onClick={() => navigate(`/bots/${bot.id}`)}
+                >
+                  配置
+                </button>
                 <button
                   className="text-sm text-red-400 hover:underline"
                   onClick={() => del(bot.id, bot.name)}
