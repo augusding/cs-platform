@@ -44,7 +44,7 @@ function UrlSubmitForm({
       setName('')
       onSubmit()
     } catch (e: any) {
-      setError(e.response?.data?.reason || '提交失败')
+      setError(e.userMessage || e.response?.data?.reason || '提交失败')
     } finally {
       setLoading(false)
     }
@@ -181,7 +181,7 @@ export default function Knowledge() {
       })
       await loadDocs()
     } catch (e: any) {
-      alert(e.response?.data?.reason || '上传失败')
+      alert(e.userMessage || e.response?.data?.reason || '上传失败')
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -190,8 +190,12 @@ export default function Knowledge() {
 
   const delDoc = async (id: string) => {
     if (!confirm('确认删除此知识源？相关 chunks 将从向量库清除。')) return
-    await api.delete(`/bots/${botId}/knowledge/${id}`)
-    setSources((s) => s.filter((x) => x.id !== id))
+    try {
+      await api.delete(`/bots/${botId}/knowledge/${id}`)
+      setSources((s) => s.filter((x) => x.id !== id))
+    } catch (e: any) {
+      alert(e.userMessage || e.response?.data?.reason || '删除失败')
+    }
   }
 
   const addFaq = async () => {
@@ -208,7 +212,7 @@ export default function Knowledge() {
       setFaqPri(0)
       await loadFaqs()
     } catch (e: any) {
-      alert(e.response?.data?.reason || '添加失败')
+      alert(e.userMessage || e.response?.data?.reason || '添加失败')
     } finally {
       setAddingFaq(false)
     }
@@ -220,7 +224,7 @@ export default function Knowledge() {
       await api.delete(`/bots/${botId}/faq/${id}`)
       setFaqs((f) => f.filter((x) => x.id !== id))
     } catch (e: any) {
-      alert(e.response?.data?.reason || '删除失败')
+      alert(e.userMessage || e.response?.data?.reason || '删除失败')
     }
   }
 
@@ -233,7 +237,7 @@ export default function Knowledge() {
       setEditId(null)
       await loadFaqs()
     } catch (e: any) {
-      alert(e.response?.data?.reason || '保存失败')
+      alert(e.userMessage || e.response?.data?.reason || '保存失败')
     }
   }
 
