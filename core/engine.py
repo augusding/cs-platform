@@ -106,6 +106,7 @@ async def run_pipeline(
         state = await generator.run(state, on_token=on_token)
         state.is_grounded = True
         state.hallucination_action = "pass"
+        await _write_semantic_cache(state)
         state.total_latency_ms = int((time.time() - start) * 1000)
         return state
 
@@ -156,13 +157,29 @@ async def run_pipeline(
     return state
 
 
+# Redis 实例由 api/app.py 的 _on_startup 通过 set_redis() 注入
+_redis = None
+
+
+def set_redis(redis) -> None:
+    """由 app startup 调用，注入 Redis 实例到 engine 模块"""
+    global _redis
+    _redis = redis
+
+
 async def _check_semantic_cache(state: RAGState) -> str | None:
-    """Phase 2 实现：精确命中 → 语义相似度匹配。当前返回 None。"""
-    if not settings.SEMANTIC_CACHE_ENABLED:
+    """检查语义缓存，命中返回答案，未命中返回 None"""
+    if _redis is None:
         return None
-    return None
+    from cache.semantic import get as cache_get
+    return await cache_get(_redis, state.bot_id, state.user_query)
 
 
 async def _write_semantic_cache(state: RAGState) -> None:
-    """Week 4 缓存模块完成后补充"""
-    return None
+    """写入语义缓存"""
+    if _redis is None:
+        return
+    from cache.semantic import set as cache_set
+    await cache_set(
+        _redis, state.bot_id, state.user_query, state.generated_answer
+    )

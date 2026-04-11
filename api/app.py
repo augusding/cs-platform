@@ -15,7 +15,7 @@ from api.routes.bots import register as reg_bots
 from api.routes.knowledge import register as reg_knowledge
 from api.routes.chat import register as reg_chat
 from api.routes.widget import register as reg_widget
-# Week 4：from api.routes.admin import register as reg_admin
+from api.routes.admin import register as reg_admin
 # Week 5：from api.routes.leads import register as reg_leads
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,10 @@ async def _on_startup(app: web.Application) -> None:
     # Milvus 连接（Week 2 知识库摄取时启用）
     # from knowledge.vector_store import init_milvus
     # app["milvus"] = init_milvus()
+
+    # 注入 Redis 到 RAG engine（用于语义缓存）
+    from core.engine import set_redis
+    set_redis(app["redis"])
 
     logger.info("所有连接池已就绪")
 
@@ -60,7 +64,7 @@ def create_app() -> web.Application:
     reg_bots(app)
     reg_knowledge(app)
     reg_chat(app)
-    # reg_admin(app)      # Week 4 解注释
+    reg_admin(app)
     # reg_leads(app)      # Week 5 解注释
 
     # ─── 生命周期钩子 ──────────────────────────────────────

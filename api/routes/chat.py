@@ -76,7 +76,14 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
                 db, session_id, tenant_id, "user", user_content
             )
 
-            history = await get_history(db, session_id, limit=6)
+            # 优先从 Redis 缓存读对话历史，回退到 DB
+            redis = request.app.get("redis")
+            history: list[dict] = []
+            if redis is not None:
+                from cache.session import get_history as cache_get_history
+                history = await cache_get_history(redis, session_id)
+            if not history:
+                history = await get_history(db, session_id, limit=6)
 
             async def on_token(token: str):
                 await _send(ws, {"type": "token", "content": token})
@@ -112,6 +119,15 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
                 grader_score=state.grader_score,
                 is_grounded=state.is_grounded,
             )
+
+            # 写回 session 缓存并累加配额计数
+            if redis is not None:
+                from cache.session import append_turn
+                from cache.quota import increment as quota_inc
+                await append_turn(
+                    redis, session_id, user_content, state.generated_answer
+                )
+                await quota_inc(redis, tenant_id)
 
             done_payload = {
                 "type": "done",

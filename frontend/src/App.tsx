@@ -1,0 +1,88 @@
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import Dashboard from './pages/Dashboard'
+import Bots from './pages/Bots'
+import Knowledge from './pages/Knowledge'
+import Sessions from './pages/Sessions'
+import Login from './pages/Login'
+
+function Layout({ children }: { children: React.ReactNode }) {
+  const nav = [
+    { to: '/', label: '数据概览' },
+    { to: '/bots', label: 'Bot 管理' },
+    { to: '/knowledge', label: '知识库' },
+    { to: '/sessions', label: '会话记录' },
+  ]
+  const logout = () => {
+    localStorage.removeItem('access_token')
+    window.location.href = '/login'
+  }
+
+  return (
+    <div className="flex min-h-screen bg-gray-50">
+      <aside className="w-52 bg-white border-r border-gray-100 flex flex-col">
+        <div className="p-5 border-b border-gray-100">
+          <p className="font-semibold text-gray-800">CS Platform</p>
+          <p className="text-xs text-gray-400 mt-0.5">Admin Console</p>
+        </div>
+        <nav className="flex-1 p-3 space-y-1">
+          {nav.map((n) => (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              end={n.to === '/'}
+              className={({ isActive }) =>
+                `block px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`
+              }
+            >
+              {n.label}
+            </NavLink>
+          ))}
+        </nav>
+        <button
+          onClick={logout}
+          className="p-4 text-sm text-gray-400 hover:text-gray-600 text-left border-t border-gray-100"
+        >
+          退出登录
+        </button>
+      </aside>
+      <main className="flex-1 p-8 overflow-auto">{children}</main>
+    </div>
+  )
+}
+
+function PrivateRoute({ children }: { children: React.ReactNode }) {
+  return localStorage.getItem('access_token') ? (
+    <>{children}</>
+  ) : (
+    <Navigate to="/login" replace />
+  )
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/*"
+          element={
+            <PrivateRoute>
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/bots" element={<Bots />} />
+                  <Route path="/knowledge" element={<Knowledge />} />
+                  <Route path="/sessions" element={<Sessions />} />
+                </Routes>
+              </Layout>
+            </PrivateRoute>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  )
+}

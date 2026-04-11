@@ -46,11 +46,25 @@
   端到端：login→create bot→rotate key→WS connect→发'你好'→收 5 tokens→done
          1341ms grounded=True，DB 保存 user+assistant 2 条消息
 
+- Week 4 Day 1-2：语义缓存激活
+  cache/semantic.py：key=semantic:{bot_id}:{md5(query)}，TTL 86400s
+  cache/session.py：会话历史缓存，TTL 1800s，最多保留 10 轮
+  cache/quota.py：月度消息计数 INCR + expireat 到月底
+  core/engine.set_redis()：app startup 注入 redis，_check/_write_semantic_cache 激活
+  chat.py：优先从 session 缓存读历史，回退 DB；写回 session 缓存 + 配额递增
+  关键修复：skip_retrieval 分支原先直接 return 跳过 cache write，已补上
+  端到端：同一'你好'query 第 1 次 1589ms MISS → 第 2 次 1ms HIT (60x 加速)
+- Week 4 Day 3-5：Admin Console MVP
+  api/routes/admin.py：GET /api/admin/sessions (分页) + /api/admin/stats
+  frontend/：Vite + React 18 + TS + Tailwind v4 + react-router-dom 项目初始化
+  5 个页面：Login / Dashboard / Bots / Knowledge / Sessions
+  frontend/src/api/client.ts：axios + JWT 自动附加 + 401 重定向登录
+  构建验证：tsc --noEmit 通过；vite build 输出 214KB JS + 15KB CSS
+
 [进行中]
-- Week 4：Query Transform 细化 + Admin Console 前端
+- Week 5：询盘捕获 + 通知 + 人工接管
 
 [待开始]
-- Week 5：询盘捕获 + 通知 + 人工接管
 - Week 6：套餐/配额 + 支付
 - Week 7：CI/CD + Golden Set + 压测
 
