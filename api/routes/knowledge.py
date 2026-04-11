@@ -96,9 +96,14 @@ async def upload_knowledge(request: web.Request) -> web.Response:
 
         r = redis_lib.from_url(settings.REDIS_URL)
         q = RQueue("ingestion", connection=r)
+        worker_db_url = settings.DATABASE_URL.replace(
+            "localhost", "postgres"
+        ).replace(
+            "127.0.0.1", "postgres"
+        )
         job = q.enqueue(
             run_ingestion,
-            source_id, bot_id, tenant_id, settings.DATABASE_URL,
+            source_id, bot_id, tenant_id, worker_db_url,
             job_timeout=600,
         )
         job_id = job.id
@@ -157,9 +162,14 @@ async def submit_url(request: web.Request) -> web.Response:
 
         r = redis_lib.from_url(settings.REDIS_URL)
         q = RQueue("ingestion", connection=r)
+        worker_db_url = settings.DATABASE_URL.replace(
+            "localhost", "postgres"
+        ).replace(
+            "127.0.0.1", "postgres"
+        )
         job = q.enqueue(
             run_ingestion,
-            source_id, bot_id, tenant_id, settings.DATABASE_URL,
+            source_id, bot_id, tenant_id, worker_db_url,
             job_timeout=300,
         )
         job_id = job.id
