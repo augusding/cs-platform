@@ -38,13 +38,11 @@ async def health_detail(request: web.Request) -> web.Response:
     except Exception as e:
         checks["redis"] = f"error: {e}"
 
-    # RQ 队列可达（不强制 worker 在线，仅校验 redis 队列后端可访问）
+    # RQ 队列可达（直接用 app 已有的 async redis 读 RQ list key，
+    # 避免 rq.Queue 构造在 Windows 上触发 multiprocessing fork context 查找）
     try:
-        import redis as sync_redis
-        from rq import Queue
-        from config import settings
-        r = sync_redis.from_url(settings.REDIS_URL)
-        Queue("ingestion", connection=r).get_job_ids()
+        redis = request.app["redis"]
+        await redis.llen("rq:queue:ingestion")
         checks["rq_queue"] = "ok"
     except Exception as e:
         checks["rq_queue"] = f"error: {e}"
