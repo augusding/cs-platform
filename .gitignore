@@ -1,0 +1,41 @@
+# 环境配置（绝对不提交）
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# 依赖
+venv/
+.venv/
+node_modules/
+
+# 数据目录（本地数据不提交）
+data/uploads/*
+data/logs/*
+!data/uploads/.gitkeep
+!data/logs/.gitkeep
+
+# 前端构建
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# 临时文件
+*.tmp
+*.bak
