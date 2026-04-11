@@ -34,11 +34,22 @@
   store/__init__.py 重导出所有 store 子模块
   端到端验证：'你好' → skip_retrieval 路径 → Qwen 流式 5 tokens → 1374ms
 
+- Week 3 Day 4-5：WebSocket Chat + Widget JS + Standalone 对话页
+  迁移：a008 (sessions/messages/leads) 已应用
+  store/session_store.py：create/get_or_create/save_message/get_history/close
+  api/routes/chat.py：WebSocket /api/chat/{bot_id}，协议帧 connected/token/done/error/transfer/ping/pong
+    安全：path bot_id 与 API Key 解析的 bot_id 必须匹配（防跨 bot 使用）
+  api/routes/widget.py：GET /widget.js（公开）+ GET /chat/{bot_id} standalone 页
+    standalone 页 HTML-escape 所有嵌入字段，防 XSS
+  widget/widget.ts + widget.js：Shadow DOM 隔离，apiKey 从 CS_CONFIG 读取
+  middleware：/chat/{bot_id} 前缀纳入 PUBLIC_PATHS
+  端到端：login→create bot→rotate key→WS connect→发'你好'→收 5 tokens→done
+         1341ms grounded=True，DB 保存 user+assistant 2 条消息
+
 [进行中]
-- Week 3 Day 4-5：Chat WebSocket + Widget JS
+- Week 4：Query Transform 细化 + Admin Console 前端
 
 [待开始]
-- Week 4：Query Transform + Admin Console
 - Week 5：询盘捕获 + 通知 + 人工接管
 - Week 6：套餐/配额 + 支付
 - Week 7：CI/CD + Golden Set + 压测

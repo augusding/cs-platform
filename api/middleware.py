@@ -26,6 +26,9 @@ async def jwt_middleware(request: web.Request, handler):
     # ── 1. 公开路径直接放行 ──────────────────────────────
     if request.path in PUBLIC_PATHS:
         return await handler(request)
+    # Standalone 对话页 /chat/{bot_id} 公开（widget.js 会自行带 Bot API Key 连 WS）
+    if request.path.startswith("/chat/"):
+        return await handler(request)
 
     # ── 2. Chat / Widget 路由：Bot API Key 鉴权 ──────────
     if request.path.startswith("/api/chat/"):

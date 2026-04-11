@@ -13,7 +13,8 @@ from api.routes.health import register as reg_health
 from api.routes.auth import register as reg_auth
 from api.routes.bots import register as reg_bots
 from api.routes.knowledge import register as reg_knowledge
-# Week 3：from api.routes.chat import register as reg_chat
+from api.routes.chat import register as reg_chat
+from api.routes.widget import register as reg_widget
 # Week 4：from api.routes.admin import register as reg_admin
 # Week 5：from api.routes.leads import register as reg_leads
 
@@ -54,10 +55,11 @@ def create_app() -> web.Application:
 
     # ─── 注册路由 ──────────────────────────────────────────
     reg_health(app)
+    reg_widget(app)
     reg_auth(app)
     reg_bots(app)
     reg_knowledge(app)
-    # reg_chat(app)       # Week 3 解注释
+    reg_chat(app)
     # reg_admin(app)      # Week 4 解注释
     # reg_leads(app)      # Week 5 解注释
 
