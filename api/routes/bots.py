@@ -144,5 +144,41 @@ async def rotate_key_handler(request: web.Request) -> web.Response:
     })
 
 
+# ── POST /api/bots/{bot_id}/reveal-key ───────────────────
+def _generate_embed_code(bot_id: str, api_key: str, origin: str) -> str:
+    return (
+        f"<script>\n"
+        f"window.CS_CONFIG = {{\n"
+        f'  botId: "{bot_id}",\n'
+        f'  apiKey: "{api_key}"\n'
+        f"}};\n"
+        f"</script>\n"
+        f'<script src="{origin}/widget.js" async></script>'
+    )
+
+
+@routes.post("/api/bots/{bot_id}/reveal-key")
+async def reveal_key_handler(request: web.Request) -> web.Response:
+    """返回完整 bot_api_key 和嵌入代码。仅 admin+ 可调用。"""
+    _require_admin(request)
+    db = request.app["db"]
+    bot = await bot_store.get_bot_with_key(
+        db, request.match_info["bot_id"], request["tenant_id"]
+    )
+    if not bot:
+        raise web.HTTPForbidden(reason="Bot not found or access denied")
+
+    origin = f"{request.scheme}://{request.host}"
+    return web.json_response({
+        "data": {
+            "bot_id": str(bot["id"]),
+            "bot_api_key": bot["bot_api_key"],
+            "embed_code": _generate_embed_code(
+                str(bot["id"]), bot["bot_api_key"], origin
+            ),
+        }
+    })
+
+
 def register(app: web.Application) -> None:
     app.router.add_routes(routes)

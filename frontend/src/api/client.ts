@@ -11,9 +11,19 @@ api.interceptors.request.use((cfg) => {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401) {
+    const status = err.response?.status
+    const reason =
+      err.response?.data?.reason ||
+      err.response?.data?.error?.message ||
+      '请求失败'
+
+    if (status === 401) {
       localStorage.removeItem('access_token')
       window.location.href = '/login'
+    } else if (status === 402) {
+      window.dispatchEvent(new CustomEvent('quota-exceeded', { detail: reason }))
+    } else if (status === 429) {
+      window.dispatchEvent(new CustomEvent('rate-limited', { detail: reason }))
     }
     return Promise.reject(err)
   },

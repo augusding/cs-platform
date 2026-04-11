@@ -129,8 +129,30 @@
     rate limit 310 burst → 280×200 + 30×429 ✓
     frontend build 220KB ✓
 
+- Phase 1：基础修复 + 生产环境就绪
+  Milvus 兼容性：pin marshmallow<3.13，pymilvus 2.4.0 导入正常
+  RQ Worker：docker-compose 新增 worker service（profile=worker 可选启动）
+    Dockerfile.worker 独立镜像
+    scripts/start_worker.ps1 本地 Windows 启动脚本
+  /health/detail：新增 rq_queue 和 milvus 检查
+    critical = {postgres, redis}；rq_queue / milvus 失败仅 warning 不降级
+  Bot API Key reveal-key：
+    store/bot_store.get_bot_with_key() admin-only
+    POST /api/bots/{id}/reveal-key → 返回完整 key + 可复制的 <script> 嵌入代码
+    embed_code 基于 request.scheme + host 自动生成 widget 引用
+  前端交互完善：
+    api/client.ts：401→重定向, 402→CustomEvent('quota-exceeded'),
+                   429→CustomEvent('rate-limited')
+    Bots.tsx：嵌入代码 Modal + 复制按钮 + 创建表单 inline error
+    Knowledge.tsx：pending/processing 状态 5s 自动轮询，上传后立即刷新
+  端到端验证：
+    /health/detail → postgres/redis/rq_queue/milvus 全部 ok
+    reveal-key → 完整 key + embed_code 含 CS_CONFIG/botId/apiKey
+    revealed key WS 连接成功
+    Milvus create collection → drop 完整生命周期 OK
+
 [进行中]
-  （Week 1-7 已完成，v1.0.0 MVP 就绪）
+  （Phase 1 完成，v1.0.0 MVP + 知识库摄取 Pipeline 全线可用）
 
 [待开始]
   （本里程碑结束后）
@@ -139,8 +161,8 @@
 - queue/ 目录已改名为 job_queue/（避免与Python内置queue模块冲突）
 - alembic.ini 中文注释已改为英文（Windows GBK编码问题）
 - 开发阶段邀请token直接在API响应中返回，生产环境需改为发邮件
-- pymilvus 2.4.0 依赖 environs → marshmallow<3.13，当前环境 marshmallow 更新，
-  导致 `import pymilvus` 报 `__version_info__` 不存在；需 pin marshmallow 或升级 pymilvus
+- pymilvus 2.4.0 依赖 environs → marshmallow<3.13；已在 requirements.txt pin，
+  本地环境 pip install "marshmallow<3.13" 已修复（Phase 1）
 
 [安全]
 - P0 已实现：

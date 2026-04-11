@@ -144,3 +144,15 @@ async def count_bots(pool: asyncpg.Pool, tenant_id: str) -> int:
         "SELECT COUNT(*) FROM bots WHERE tenant_id = $1 AND status != 'deleted'",
         tenant_id,
     )
+
+
+async def get_bot_with_key(
+    pool: asyncpg.Pool, bot_id: str, tenant_id: str
+) -> dict | None:
+    """返回含完整 bot_api_key 的 Bot 信息（仅限 admin+ 调用）"""
+    row = await fetch_one(
+        pool,
+        "SELECT * FROM bots WHERE id = $1 AND tenant_id = $2",
+        bot_id, tenant_id,
+    )
+    return dict(row) if row else None

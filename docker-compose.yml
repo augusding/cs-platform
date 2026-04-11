@@ -42,6 +42,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── RQ Worker（知识库摄取 / 通知） ─────────────────────
+  # 默认在 compose 中不启动，本地开发可用 scripts/start_worker.ps1
+  # 生产环境取消 profiles 或用 `docker compose --profile worker up -d`
+  worker:
+    container_name: cs-worker
+    profiles: ["worker"]
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://cs_user:cs_pass@postgres:5432/cs_platform
+      REDIS_URL: redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./data/logs:/app/data/logs
+
   # ─── Milvus 依赖：etcd ─────────────────────────────────
   etcd:
     container_name: cs-etcd

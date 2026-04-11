@@ -38,7 +38,30 @@ async def health_detail(request: web.Request) -> web.Response:
     except Exception as e:
         checks["redis"] = f"error: {e}"
 
-    all_ok = all(v == "ok" for v in checks.values())
+    # RQ 队列可达（不强制 worker 在线，仅校验 redis 队列后端可访问）
+    try:
+        import redis as sync_redis
+        from rq import Queue
+        from config import settings
+        r = sync_redis.from_url(settings.REDIS_URL)
+        Queue("ingestion", connection=r).get_job_ids()
+        checks["rq_queue"] = "ok"
+    except Exception as e:
+        checks["rq_queue"] = f"error: {e}"
+
+    # Milvus 可选检查（失败不致 503，仅标注）
+    try:
+        from knowledge.vector_store import _connect
+        _connect()
+        checks["milvus"] = "ok"
+    except Exception as e:
+        checks["milvus"] = f"warning: {e}"
+
+    # rq_queue/milvus 失败不计入整体不健康（摄取 pipeline 是可选子系统）
+    critical = {"postgres", "redis"}
+    all_ok = all(
+        v == "ok" for k, v in checks.items() if k in critical
+    )
     return web.json_response(
         {"status": "ok" if all_ok else "degraded", "checks": checks},
         status=200 if all_ok else 503,

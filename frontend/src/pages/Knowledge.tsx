@@ -42,6 +42,22 @@ export default function Knowledge() {
     if (botId) api.get(`/bots/${botId}/knowledge`).then((r) => setSources(r.data.data))
   }, [botId])
 
+  // 自动轮询：有 pending/processing 时每 5s 刷新
+  useEffect(() => {
+    if (!botId) return
+    const hasPending = sources.some(
+      (s) => s.status === 'pending' || s.status === 'processing',
+    )
+    if (!hasPending) return
+    const timer = setInterval(() => {
+      api
+        .get(`/bots/${botId}/knowledge`)
+        .then((r) => setSources(r.data.data))
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [botId, sources])
+
   const upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -52,10 +68,9 @@ export default function Knowledge() {
       await api.post(`/bots/${botId}/knowledge`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setTimeout(
-        () => api.get(`/bots/${botId}/knowledge`).then((r) => setSources(r.data.data)),
-        1000,
-      )
+      // 上传后立即刷新，之后由 polling effect 接管
+      const r = await api.get(`/bots/${botId}/knowledge`)
+      setSources(r.data.data)
     } catch (e: any) {
       alert(e.response?.data?.reason || '上传失败')
     } finally {

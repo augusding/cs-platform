@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 先装依赖以利用 docker 层缓存
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# 监听 ingestion / notifications / signals 三个队列
+CMD ["python", "main.py", "worker"]
