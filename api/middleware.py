@@ -90,11 +90,13 @@ async def jwt_middleware(request: web.Request, handler):
         return await handler(request)
 
     # ── 3. 标准 JWT 路由 ──────────────────────────────────
-    # Admin 实时监听 WS 允许 ?key= 查询参数携带 JWT
+    # Admin 实时监听 / 调试 WS 允许查询参数携带 JWT
     # （浏览器 WebSocket API 无法设置自定义 header）
     token: str | None = None
     if request.path.startswith("/api/admin/listen/"):
         token = request.rel_url.query.get("key")
+    elif request.path.startswith("/api/admin/debug/"):
+        token = request.rel_url.query.get("token")
 
     if not token:
         auth_header = request.headers.get("Authorization", "")

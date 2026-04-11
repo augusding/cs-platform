@@ -400,5 +400,114 @@ async def notify_admin_listeners(session_id: str, data: dict) -> None:
     ws_set -= dead
 
 
+@routes.get("/api/admin/debug/{bot_id}")
+async def debug_ws(request: web.Request) -> web.WebSocketResponse:
+    """Admin 调试 WebSocket：JWT 鉴权，完整跑 RAG pipeline 并返回 debug 信息。"""
+    import uuid
+
+    tenant_id = request["tenant_id"]
+    bot_id = request.match_info["bot_id"]
+    db = request.app["db"]
+
+    from store.bot_store import get_bot
+    bot = await get_bot(db, bot_id, tenant_id)
+    if not bot:
+        return web.Response(status=403, text="Bot not found or access denied")
+
+    ws = web.WebSocketResponse(heartbeat=30)
+    await ws.prepare(request)
+
+    session_id = str(uuid.uuid4())
+    history: list[dict] = []
+
+    await ws.send_json({
+        "type": "connected",
+        "session_id": session_id,
+        "bot_name": bot["name"],
+        "welcome": bot.get("welcome_message", ""),
+    })
+
+    async for msg in ws:
+        if msg.type == WSMsgType.TEXT:
+            try:
+                data = json.loads(msg.data)
+            except Exception:
+                continue
+            if data.get("type") != "message":
+                continue
+
+            content = (data.get("content") or "").strip()
+            if not content:
+                continue
+
+            history.append({"role": "user", "content": content})
+
+            async def on_token(token: str):
+                try:
+                    await ws.send_json({"type": "token", "content": token})
+                except Exception:
+                    pass
+
+            try:
+                from core.engine import run_pipeline
+                state = await run_pipeline(
+                    user_query=content,
+                    bot_id=bot_id,
+                    tenant_id=tenant_id,
+                    session_id=session_id,
+                    language=bot.get("language", "zh"),
+                    history=history[-6:],
+                    on_token=on_token,
+                    db_pool=db,
+                )
+
+                history.append({
+                    "role": "assistant",
+                    "content": state.generated_answer,
+                })
+
+                chunk_summaries = []
+                for i, c in enumerate(state.retrieved_chunks[:5], 1):
+                    preview = (c.get("content", "") or "")[:40].replace("\n", " ")
+                    chunk_summaries.append({
+                        "index": i,
+                        "source": c.get("source_id", ""),
+                        "page": int(c.get("page", 0) or 0),
+                        "score": round(float(c.get("score", 0) or 0), 3),
+                        "preview": preview,
+                    })
+
+                await ws.send_json({
+                    "type": "done",
+                    "session_id": session_id,
+                    "cache_hit": state.cache_hit,
+                    "latency_ms": state.total_latency_ms,
+                    "debug": {
+                        "intent": state.intent,
+                        "transform_strategy": state.transform_strategy,
+                        "grader_score": round(state.grader_score, 3),
+                        "grader_threshold": 0.6,
+                        "attempts": state.attempts,
+                        "is_grounded": state.is_grounded,
+                        "hallucination": state.hallucination_action,
+                        "should_transfer": state.should_transfer,
+                        "chunks": chunk_summaries,
+                        "tokens_used": state.tokens_used,
+                    },
+                })
+            except Exception as e:
+                logger.exception(f"Debug pipeline error: {e}")
+                await ws.send_json({
+                    "type": "error",
+                    "code": "PIPELINE_ERROR",
+                    "message": str(e)[:200],
+                })
+
+        elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+            break
+
+    return ws
+
+
 def register(app: web.Application) -> None:
     app.router.add_routes(routes)
