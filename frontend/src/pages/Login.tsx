@@ -14,6 +14,10 @@ export default function Login() {
       const { data } = await api.post('/auth/login', { email, password })
       localStorage.setItem('access_token', data.data.access_token)
       localStorage.setItem('role', data.data.role)
+      try {
+        const me = await api.get('/auth/me')
+        if (me.data?.data?.name) localStorage.setItem('user_name', me.data.data.name)
+      } catch {}
       window.location.href = '/'
     } catch (e: any) {
       setError(e.response?.data?.reason || '登录失败')
