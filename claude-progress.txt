@@ -1,0 +1,31 @@
+=== CS Platform 开发进度 ===
+最后更新：2026-04-11
+
+[已完成]
+- 预备期：项目骨架、docker-compose、目录结构、CLAUDE.md、开发规范文档
+- Week 1 Day 1-2：4张认证表迁移（tenants/users/invitations/refresh_tokens）
+- Week 1 Day 3-4：Auth API（register/login/refresh/logout/invite/accept）
+  store层：tenant_store / user_store / invitation_store / refresh_token_store
+  auth层：jwt_utils / password
+  路由：api/routes/auth.py 已注册
+- Week 1 Day 5：test_auth.py 全链路验证（13 cases 全部通过）
+  覆盖：注册/重复注册/登录/密码错误/刷新/旧token轮换/登出/邀请/接受邀请/无效token/租户隔离
+
+[进行中]
+- Week 2：Bot CRUD + 知识库摄取
+
+[待开始]
+- Week 3：RAG核心引擎 + Widget
+- Week 4：Query Transform + Admin Console
+- Week 5：询盘捕获 + 通知 + 人工接管
+- Week 6：套餐/配额 + 支付
+- Week 7：CI/CD + Golden Set + 压测
+
+[已知问题/注意事项]
+- queue/ 目录已改名为 job_queue/（避免与Python内置queue模块冲突）
+- alembic.ini 中文注释已改为英文（Windows GBK编码问题）
+- 开发阶段邀请token直接在API响应中返回，生产环境需改为发邮件
+
+[仓库]
+GitHub: https://github.com/augusding/cs-platform
+分支: main
