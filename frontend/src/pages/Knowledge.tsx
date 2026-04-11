@@ -131,6 +131,13 @@ export default function Knowledge() {
 
   const [isPolling, setIsPolling] = useState(false)
 
+  const [chunksModal, setChunksModal] = useState<{
+    sourceId: string
+    sourceName: string
+    chunks: { chunk_id: string; content: string; page: number }[]
+    loading: boolean
+  } | null>(null)
+
   useEffect(() => {
     api.get('/bots').then((r) => {
       const b: Bot[] = r.data.data
@@ -247,6 +254,22 @@ export default function Knowledge() {
     }
   }
 
+  const loadChunks = async (sourceId: string, sourceName: string) => {
+    setChunksModal({ sourceId, sourceName, chunks: [], loading: true })
+    try {
+      const r = await api.get(`/bots/${botId}/knowledge/${sourceId}/chunks`)
+      setChunksModal({
+        sourceId,
+        sourceName,
+        chunks: r.data.data.chunks,
+        loading: false,
+      })
+    } catch (e: any) {
+      alert(e.userMessage || '获取 chunks 失败')
+      setChunksModal(null)
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -353,6 +376,14 @@ export default function Knowledge() {
                   >
                     {STATUS_LABEL[src.status] || src.status}
                   </span>
+                  {src.status === 'ready' && (
+                    <button
+                      className="text-xs text-blue-500 hover:underline flex-shrink-0"
+                      onClick={() => loadChunks(src.id, src.name)}
+                    >
+                      查看 chunks
+                    </button>
+                  )}
                   <button
                     className="text-xs text-red-400 hover:underline flex-shrink-0"
                     onClick={() => delDoc(src.id)}
@@ -411,6 +442,14 @@ export default function Knowledge() {
                   >
                     {STATUS_LABEL[src.status] || src.status}
                   </span>
+                  {src.status === 'ready' && (
+                    <button
+                      className="text-xs text-blue-500 hover:underline flex-shrink-0"
+                      onClick={() => loadChunks(src.id, src.name)}
+                    >
+                      查看 chunks
+                    </button>
+                  )}
                   <button
                     className="text-xs text-red-400 hover:underline flex-shrink-0"
                     onClick={() => delDoc(src.id)}
@@ -545,6 +584,64 @@ export default function Knowledge() {
                 暂无 FAQ，请添加
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {chunksModal && (
+        <div
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)',
+                   display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999 }}
+          onClick={() => setChunksModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl flex flex-col"
+            style={{ width: '680px', maxWidth: '92vw', maxHeight: '80vh' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-gray-800 truncate">{chunksModal.sourceName}</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {chunksModal.loading ? '加载中...' : `共 ${chunksModal.chunks.length} 个 chunk`}
+                </p>
+              </div>
+              <button
+                className="text-gray-400 hover:text-gray-600 ml-4 flex-shrink-0 text-lg"
+                onClick={() => setChunksModal(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-4 space-y-3">
+              {chunksModal.loading && (
+                <div className="text-center text-gray-400 text-sm py-8">加载中...</div>
+              )}
+              {!chunksModal.loading && chunksModal.chunks.length === 0 && (
+                <div className="text-center text-gray-400 text-sm py-8">
+                  暂无 chunks 数据（可能仍在处理中）
+                </div>
+              )}
+              {chunksModal.chunks.map((chunk, idx) => (
+                <div key={chunk.chunk_id} className="bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded font-mono">
+                      #{idx + 1}
+                    </span>
+                    {chunk.page > 0 && (
+                      <span className="text-xs text-gray-400">第 {chunk.page + 1} 页</span>
+                    )}
+                    <span className="text-xs text-gray-300 ml-auto font-mono">
+                      {chunk.chunk_id.slice(0, 8)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap break-words">
+                    {chunk.content}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

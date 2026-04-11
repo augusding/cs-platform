@@ -406,5 +406,62 @@ async def update_faq(request: web.Request) -> web.Response:
     })
 
 
+# ── GET /api/bots/{bot_id}/knowledge/{source_id}/chunks ─
+@routes.get("/api/bots/{bot_id}/knowledge/{source_id}/chunks")
+async def get_source_chunks(request: web.Request) -> web.Response:
+    db = request.app["db"]
+    tenant_id = request["tenant_id"]
+    bot_id    = request.match_info["bot_id"]
+    source_id = request.match_info["source_id"]
+
+    await _get_bot_or_403(db, bot_id, tenant_id)
+
+    row = await fetch_one(
+        db,
+        "SELECT id, name, type, status, chunk_count FROM knowledge_sources "
+        "WHERE id=$1 AND bot_id=$2 AND tenant_id=$3",
+        source_id, bot_id, tenant_id,
+    )
+    if not row:
+        raise web.HTTPForbidden(reason="Source not found or access denied")
+
+    chunks = []
+    try:
+        from knowledge.vector_store import _connect, _collection_name
+        from pymilvus import Collection, utility
+        _connect()
+        col_name = _collection_name(bot_id)
+        if utility.has_collection(col_name):
+            col = Collection(col_name)
+            col.load()
+            results = col.query(
+                expr=f'source_id == "{source_id}"',
+                output_fields=["chunk_id", "content", "page"],
+                limit=200,
+            )
+            chunks = [
+                {
+                    "chunk_id": r.get("chunk_id", ""),
+                    "content":  r.get("content", ""),
+                    "page":     r.get("page", 0),
+                }
+                for r in results
+            ]
+            chunks.sort(key=lambda x: x["page"])
+    except Exception as e:
+        logger.warning(f"Failed to query chunks from Milvus: {e}")
+
+    return web.json_response({
+        "data": {
+            "source": {
+                **dict(row),
+                "id": str(row["id"]),
+            },
+            "chunks": chunks,
+            "total": len(chunks),
+        }
+    })
+
+
 def register(app: web.Application) -> None:
     app.router.add_routes(routes)
