@@ -5,10 +5,17 @@ CS Platform — 启动入口
     python main.py serve           # 启动 API 服务
     python main.py worker          # 启动 RQ Worker（新终端）
 """
+import sys
+
+if sys.platform == "win32":
+    import multiprocessing.context as _mpc
+    _mpc._concrete_contexts.setdefault(
+        "fork", _mpc._concrete_contexts["spawn"]
+    )
+
 import asyncio
 import logging
 import os
-import sys
 
 
 _STD_LOG_FIELDS = {
