@@ -121,33 +121,73 @@ async def jwt_middleware(request: web.Request, handler):
     return await handler(request)
 
 
-# ── 简单内存限流（生产环境建议改为 Redis token bucket）────────
-# { ip: deque[timestamps] }
+# ── Redis 滑动窗口限流（进程重启/多实例保持状态） ─────────────
+# 内存限流的 dict 仍保留作 Redis 不可用时的兜底
 _rate_limit_buckets: dict[str, deque] = defaultdict(deque)
 _RATE_WINDOW_SECONDS = 60
 
 
-@web.middleware
-async def rate_limit_middleware(request: web.Request, handler):
-    """IP 级基础限流（仅 /api/ 路径），防 DDoS。"""
-    if not request.path.startswith("/api/"):
-        return await handler(request)
-
-    from config import settings
-    limit = settings.RATE_LIMIT_PER_MIN
-    ip = request.remote or "unknown"
+async def _memory_limit_check(ip: str, limit: int) -> bool:
+    """Redis 不可用时的进程内存兜底"""
     now = time.time()
     bucket = _rate_limit_buckets[ip]
     while bucket and now - bucket[0] >= _RATE_WINDOW_SECONDS:
         bucket.popleft()
-
     if len(bucket) >= limit:
+        return False
+    bucket.append(now)
+    return True
+
+
+@web.middleware
+async def rate_limit_middleware(request: web.Request, handler):
+    """IP + tenant 级滑动窗口限流。"""
+    if not request.path.startswith("/api/"):
+        return await handler(request)
+
+    from config import settings
+    ip_limit = settings.RATE_LIMIT_PER_MIN
+    # 取第一跳真实 IP；多级代理时信任最外层 header
+    ip = (
+        request.headers.get("X-Forwarded-For", request.remote or "unknown")
+        .split(",")[0]
+        .strip()
+    )
+
+    redis = request.app.get("redis")
+    if redis is None:
+        # Redis 未就绪：退回进程内存
+        if not await _memory_limit_check(ip, ip_limit):
+            raise web.HTTPTooManyRequests(
+                reason="Too many requests. Please slow down.",
+                headers={"Retry-After": "60"},
+            )
+        return await handler(request)
+
+    from cache.ratelimit import (
+        is_allowed,
+        ip_key,
+        tenant_key,
+        TENANT_LIMIT,
+    )
+
+    if not await is_allowed(redis, ip_key(ip), ip_limit):
         raise web.HTTPTooManyRequests(
-            reason="Too many requests. Please slow down.",
+            reason="Too many requests from this IP. Please slow down.",
             headers={"Retry-After": "60"},
         )
 
-    bucket.append(now)
+    # 租户级限流（仅 WebSocket 对话路由；此时 request['tenant_id']
+    # 已被 bot-key 分支注入——限流在 JWT 之前所以通常拿不到，这里是一个占位，
+    # 未来接入 X-Tenant-Id 头或 session cookie 时生效）
+    tenant_id = request.get("tenant_id")
+    if tenant_id and request.path.startswith("/api/chat/"):
+        if not await is_allowed(redis, tenant_key(str(tenant_id)), TENANT_LIMIT):
+            raise web.HTTPTooManyRequests(
+                reason="Tenant request limit exceeded.",
+                headers={"Retry-After": "60"},
+            )
+
     return await handler(request)
 
 

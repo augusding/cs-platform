@@ -8,6 +8,7 @@ import SessionDetail from './pages/SessionDetail'
 import Leads from './pages/Leads'
 import Billing from './pages/Billing'
 import Members from './pages/Members'
+import AuditLog from './pages/AuditLog'
 import Profile from './pages/Profile'
 import Login from './pages/Login'
 
@@ -19,6 +20,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     { to: '/sessions', label: '会话记录' },
     { to: '/leads', label: '询盘线索' },
     { to: '/members', label: '成员管理' },
+    { to: '/audit', label: '操作审计' },
     { to: '/billing', label: '套餐管理' },
   ]
   const logout = () => {
@@ -105,6 +107,7 @@ export default function App() {
                   <Route path="/leads" element={<Leads />} />
                   <Route path="/billing" element={<Billing />} />
                   <Route path="/members" element={<Members />} />
+                  <Route path="/audit" element={<AuditLog />} />
                   <Route path="/profile" element={<Profile />} />
                 </Routes>
               </Layout>

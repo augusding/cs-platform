@@ -85,6 +85,16 @@ async def update_member_role(request: web.Request) -> web.Response:
     )
     if result == "UPDATE 0":
         raise web.HTTPForbidden(reason="User not found or access denied")
+
+    from store.audit_store import log_action
+    await log_action(
+        db, tenant_id, "member.role_change", "user", target_uid,
+        user_id=current_uid,
+        before={"role": target["role"]},
+        after={"role": new_role},
+        ip=request.remote,
+    )
+
     return web.json_response(
         {"data": {"user_id": target_uid, "role": new_role}}
     )
@@ -131,6 +141,15 @@ async def update_member_status(request: web.Request) -> web.Response:
             """,
             target_uid,
         )
+
+    from store.audit_store import log_action
+    await log_action(
+        db, tenant_id, "member.status_change", "user", target_uid,
+        user_id=current_uid,
+        after={"status": new_status},
+        ip=request.remote,
+    )
+
     return web.json_response(
         {"data": {"user_id": target_uid, "status": new_status}}
     )

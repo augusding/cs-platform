@@ -9,6 +9,12 @@ interface Stats {
   period: string
 }
 
+interface NoHitQuery {
+  query: string
+  count: number
+  last_seen: string
+}
+
 const PERIOD_OPTIONS = [
   { value: 'today', label: '今日' },
   { value: 'week', label: '本周' },
@@ -19,6 +25,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [period, setPeriod] = useState('month')
   const [loading, setLoading] = useState(false)
+  const [noHitQueries, setNoHitQueries] = useState<NoHitQuery[]>([])
 
   const load = (p: string) => {
     setLoading(true)
@@ -40,6 +47,13 @@ export default function Dashboard() {
   useEffect(() => {
     load(period)
   }, [period])
+
+  useEffect(() => {
+    api
+      .get('/admin/no-hit-queries')
+      .then((r) => setNoHitQueries(r.data.data))
+      .catch(() => setNoHitQueries([]))
+  }, [])
 
   const cards = [
     {
@@ -116,14 +130,35 @@ export default function Dashboard() {
 
       <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
         <p className="text-sm font-medium text-gray-700 mb-1">
-          无法回答的问题（知识库优化入口）
+          未解决问题（知识库优化入口）
         </p>
         <p className="text-xs text-gray-400">
-          当知识库完善后，此处将展示高频未解决问题列表
+          最近 30 天访客提问但 AI 判定无依据的高频问题；建议补充 FAQ 或上传相关文档
         </p>
-        <div className="mt-4 py-8 text-center text-gray-300 text-sm border-2 border-dashed border-gray-100 rounded-lg">
-          暂无数据
-        </div>
+        {noHitQueries.length > 0 ? (
+          <div className="mt-4 space-y-1">
+            {noHitQueries.slice(0, 10).map((q, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0"
+              >
+                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded flex-shrink-0">
+                  {q.count}次
+                </span>
+                <span className="text-sm text-gray-700 flex-1 truncate">
+                  {q.query}
+                </span>
+                <span className="text-xs text-gray-300 flex-shrink-0">
+                  {new Date(q.last_seen).toLocaleDateString('zh')}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 py-8 text-center text-gray-300 text-sm border-2 border-dashed border-gray-100 rounded-lg">
+            暂无未解决问题
+          </div>
+        )}
       </div>
     </div>
   )

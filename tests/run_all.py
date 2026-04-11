@@ -3,6 +3,7 @@
 前提：python main.py serve 已在另一终端运行（test_auth 和
 test_tenant_isolation 都是 HTTP 集成测试）。
 """
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -46,6 +47,26 @@ def main() -> None:
         ))
     except FileNotFoundError:
         print("\n  SKIP: 前端构建 (npm 未安装)")
+
+    # Golden Set 回归（需要服务运行 + LLM API Key）
+    golden_email = os.getenv("GOLDEN_EMAIL")
+    golden_password = os.getenv("GOLDEN_PASSWORD")
+    if golden_email and golden_password:
+        results.append((
+            "Golden Set 回归",
+            run(
+                [
+                    sys.executable, "tests/test_golden_set.py",
+                    "--email", golden_email,
+                    "--password", golden_password,
+                ],
+                "Golden Set 回归（20 cases）",
+            ),
+        ))
+    else:
+        print(
+            "\n  SKIP: Golden Set (设置 GOLDEN_EMAIL/GOLDEN_PASSWORD 环境变量以启用)"
+        )
 
     # ── 安全检查 ──
     print("\n" + "=" * 55)

@@ -126,6 +126,14 @@ async def simulate_pay(request: web.Request) -> web.Response:
     if not tenant_id:
         raise web.HTTPBadRequest(reason="Order already paid")
 
+    from store.audit_store import log_action
+    await log_action(
+        db, tenant_id, "plan.upgrade", "tenant", tenant_id,
+        user_id=request.get("user_id"),
+        after={"out_trade_no": out_trade_no, "method": "simulate"},
+        ip=request.remote,
+    )
+
     return web.json_response(
         {"data": {"message": "Simulated", "tenant_id": tenant_id}}
     )

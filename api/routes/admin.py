@@ -225,6 +225,75 @@ async def transfer_session(request: web.Request) -> web.Response:
     return web.json_response({"data": {"message": "Session transferred"}})
 
 
+@routes.get("/api/admin/audit")
+async def list_audit(request: web.Request) -> web.Response:
+    """审计日志分页查询，可按 resource 过滤。"""
+    tenant_id = request["tenant_id"]
+    resource = request.rel_url.query.get("resource") or None
+    try:
+        page = max(int(request.rel_url.query.get("page", 1)), 1)
+    except ValueError:
+        page = 1
+    try:
+        page_size = min(
+            max(int(request.rel_url.query.get("page_size", 50)), 1), 100
+        )
+    except ValueError:
+        page_size = 50
+    offset = (page - 1) * page_size
+
+    from store.audit_store import list_audit_log
+    db = request.app["db"]
+    rows = await list_audit_log(db, tenant_id, resource, page_size, offset)
+    return web.json_response({
+        "data": rows,
+        "meta": {"page": page, "page_size": page_size},
+    })
+
+
+@routes.get("/api/admin/no-hit-queries")
+async def get_no_hit_queries(request: web.Request) -> web.Response:
+    """返回最近 30 天用户提问但 AI 未能给出有依据回答的高频问题。"""
+    tenant_id = request["tenant_id"]
+    db = request.app["db"]
+
+    rows = await fetch_all(
+        db,
+        """
+        SELECT
+            m.content AS query,
+            COUNT(*)  AS count,
+            MAX(m.created_at) AS last_seen
+        FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE m.tenant_id = $1
+          AND m.role = 'user'
+          AND s.started_at >= NOW() - INTERVAL '30 days'
+          AND EXISTS (
+              SELECT 1 FROM messages m2
+              WHERE m2.session_id = m.session_id
+                AND m2.role = 'assistant'
+                AND m2.is_grounded = FALSE
+                AND m2.created_at > m.created_at
+          )
+        GROUP BY m.content
+        ORDER BY count DESC, last_seen DESC
+        LIMIT 20
+        """,
+        tenant_id,
+    )
+    return web.json_response({
+        "data": [
+            {
+                "query": r["query"],
+                "count": int(r["count"]),
+                "last_seen": r["last_seen"].isoformat(),
+            }
+            for r in rows
+        ]
+    })
+
+
 @routes.get("/api/admin/listen/{session_id}")
 async def admin_listen_ws(request: web.Request) -> web.WebSocketResponse:
     """Admin 监听特定会话的实时消息推送；接管后可发送 human_agent 消息。"""

@@ -76,3 +76,65 @@ async def fetch_val(pool: asyncpg.Pool, query: str, *args) -> Any:
     """查询单个值"""
     async with pool.acquire() as conn:
         return await conn.fetchval(query, *args)
+
+
+# ── RLS-aware helpers ──────────────────────────────────────
+# 每次 acquire 连接后先 SET app.current_tenant_id，让 PostgreSQL Row-Level
+# Security 策略生效。供需要严格第二层租户隔离的关键查询使用。
+#
+# 注意：当前迁移 a012 配置为 "session var 未设则放行"，所以不用这些
+# helpers 的旧查询继续工作。需要 RLS 真正生效时，调用这些 _rls 版本
+# 并在 Alembic 中把 policy 的 OR-NULL 分支去掉。
+
+_NULL_TENANT = "00000000-0000-0000-0000-000000000000"
+
+
+async def _set_tenant(conn: asyncpg.Connection, tenant_id: str | None) -> None:
+    tid = tenant_id or _NULL_TENANT
+    # 无法参数化 SET；用字面值拼接。tid 必须是 UUID 字符串，调用方校验。
+    await conn.execute(f"SET LOCAL app.current_tenant_id = '{tid}'")
+
+
+async def fetch_one_rls(
+    pool: asyncpg.Pool, query: str, *args, tenant_id: str | None = None
+) -> asyncpg.Record | None:
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await _set_tenant(conn, tenant_id)
+            return await conn.fetchrow(query, *args)
+
+
+async def fetch_all_rls(
+    pool: asyncpg.Pool, query: str, *args, tenant_id: str | None = None
+) -> list[asyncpg.Record]:
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await _set_tenant(conn, tenant_id)
+            return await conn.fetch(query, *args)
+
+
+async def execute_rls(
+    pool: asyncpg.Pool, query: str, *args, tenant_id: str | None = None
+) -> str:
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await _set_tenant(conn, tenant_id)
+            return await conn.execute(query, *args)
+
+
+async def execute_returning_rls(
+    pool: asyncpg.Pool, query: str, *args, tenant_id: str | None = None
+) -> asyncpg.Record | None:
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await _set_tenant(conn, tenant_id)
+            return await conn.fetchrow(query, *args)
+
+
+async def fetch_val_rls(
+    pool: asyncpg.Pool, query: str, *args, tenant_id: str | None = None
+) -> Any:
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await _set_tenant(conn, tenant_id)
+            return await conn.fetchval(query, *args)

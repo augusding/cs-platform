@@ -123,6 +123,15 @@ async def create_bot_handler(request: web.Request) -> web.Response:
         style=data.get("style", "friendly"),
         system_prompt=data.get("system_prompt"),
     )
+
+    from store.audit_store import log_action
+    await log_action(
+        db, tenant_id, "bot.create", "bot", str(bot["id"]),
+        user_id=request["user_id"],
+        after={"name": bot["name"], "language": bot["language"]},
+        ip=request.remote,
+    )
+
     return web.json_response({"data": _bot_to_dict(bot)}, status=201)
 
 
@@ -165,6 +174,15 @@ async def delete_bot_handler(request: web.Request) -> web.Response:
     )
     if not ok:
         raise web.HTTPForbidden(reason="Bot not found or access denied")
+
+    from store.audit_store import log_action
+    await log_action(
+        db, request["tenant_id"], "bot.delete", "bot",
+        request.match_info["bot_id"],
+        user_id=request["user_id"],
+        ip=request.remote,
+    )
+
     return web.json_response({"data": None, "meta": {"affected": 1}})
 
 
