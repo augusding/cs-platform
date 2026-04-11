@@ -55,6 +55,7 @@ services:
     environment:
       DATABASE_URL: postgresql://cs_user:cs_pass@postgres:5432/cs_platform
       REDIS_URL: redis://redis:6379/0
+      MILVUS_HOST: milvus
     env_file:
       - .env
     depends_on:
