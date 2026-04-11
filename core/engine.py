@@ -3,6 +3,7 @@ CSEngine：Agentic RAG Pipeline 编排器。
 控制节点执行顺序和 re-retrieve 循环。
 """
 import logging
+import re
 import time
 import uuid
 
@@ -24,6 +25,27 @@ _OUT_OF_SCOPE_EN = "Sorry, this question is outside my scope of service."
 _CLARIFY_ZH = "这个问题我需要为您转接人工确认，请稍候。"
 _CLARIFY_EN = "I need to transfer you to a human agent for this question."
 
+_INJECTION_PATTERN = re.compile(
+    r"(?i)(ignore|forget|disregard|override)\s{0,10}"
+    r"(previous|above|all|prior|system|instruction)"
+)
+_HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+_CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_MAX_INPUT_LEN = 2000
+
+
+def sanitize_input(text: str) -> str:
+    """
+    Prompt 注入防御：清洗用户输入。
+    1. 过滤常见注入模式（ignore/forget/disregard/override + previous/system/…）
+    2. Strip HTML 标签和控制字符
+    3. 截断超长输入至 2000 字符
+    """
+    text = _INJECTION_PATTERN.sub("[filtered]", text)
+    text = _HTML_TAG_PATTERN.sub("", text)
+    text = _CONTROL_CHAR_PATTERN.sub("", text)
+    return text[:_MAX_INPUT_LEN].strip()
+
 
 async def run_pipeline(
     user_query: str,
@@ -39,6 +61,7 @@ async def run_pipeline(
     on_token: 流式输出回调，每个 token 调用一次。
     """
     start = time.time()
+    user_query = sanitize_input(user_query)
     state = RAGState(
         session_id=session_id or str(uuid.uuid4()),
         bot_id=bot_id,

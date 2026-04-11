@@ -16,6 +16,7 @@ routes = web.RouteTableDef()
 
 ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".docx", ".doc"}
 ADMIN_ROLES = {"super_admin", "admin"}
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
 
 def _require_admin(request: web.Request) -> None:
@@ -56,8 +57,20 @@ async def upload_knowledge(request: web.Request) -> web.Response:
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     file_id = str(uuid.uuid4())
     save_path = os.path.join(settings.UPLOAD_DIR, f"{file_id}{suffix}")
+    total_size = 0
     with open(save_path, "wb") as f:
         while chunk := await field.read_chunk(8192):
+            total_size += len(chunk)
+            if total_size > MAX_FILE_SIZE:
+                f.close()
+                try:
+                    os.remove(save_path)
+                except OSError:
+                    pass
+                raise web.HTTPRequestEntityTooLarge(
+                    max_size=MAX_FILE_SIZE,
+                    actual_size=total_size,
+                )
             f.write(chunk)
 
     display_name = filename

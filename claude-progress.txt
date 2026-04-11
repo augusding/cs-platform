@@ -50,6 +50,18 @@
 - pymilvus 2.4.0 依赖 environs → marshmallow<3.13，当前环境 marshmallow 更新，
   导致 `import pymilvus` 报 `__version_info__` 不存在；需 pin marshmallow 或升级 pymilvus
 
+[安全]
+- P0 已实现：
+  * docs/SECURITY.md 沙箱架构 + 上线检查清单
+  * core/engine.sanitize_input()：prompt 注入过滤 + HTML/控制字符剥离 + 2000 字符截断
+  * api/routes/knowledge.py 上传 20MB 限制（超限 413 并删除临时文件）
+- P1 待办（Week 7 统一实现）：
+  * 敏感词过滤 / PII 检测（手机号/身份证）
+  * PostgreSQL Row-Level Security
+  * API 限流（token bucket，超限 429）
+  * WIDGET_ALLOWED_ORIGINS 收紧（非 *）
+  * 强制 HTTPS
+
 [仓库]
 GitHub: https://github.com/augusding/cs-platform
 分支: main
