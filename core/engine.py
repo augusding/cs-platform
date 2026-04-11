@@ -71,21 +71,27 @@ async def run_pipeline(
         history=history or [],
     )
 
-    # ── 语义缓存检查 ─────────────────────────────────────
-    cached = await _check_semantic_cache(state)
-    if cached:
-        state.generated_answer = cached
-        state.is_grounded = True
-        state.hallucination_action = "pass"
-        state.cache_hit = True
-        if on_token:
-            await on_token(cached)
-        state.total_latency_ms = int((time.time() - start) * 1000)
-        return state
+    # ── 中途 lead_capture 检测：有挂起的 lead 状态则跳过缓存 + Router ──
+    pending_lead = await _load_lead_state(state.session_id)
+    if pending_lead:
+        state.intent = "lead_capture"
+        state.lead_info = pending_lead
+    else:
+        # ── 语义缓存检查 ─────────────────────────────────────
+        cached = await _check_semantic_cache(state)
+        if cached:
+            state.generated_answer = cached
+            state.is_grounded = True
+            state.hallucination_action = "pass"
+            state.cache_hit = True
+            if on_token:
+                await on_token(cached)
+            state.total_latency_ms = int((time.time() - start) * 1000)
+            return state
 
-    # ── 1. Router ──────────────────────────────────────
-    state = await router.run(state)
-    logger.debug(f"[{state.session_id}] Router: intent={state.intent}")
+        # ── 1. Router ──────────────────────────────────────
+        state = await router.run(state)
+        logger.debug(f"[{state.session_id}] Router: intent={state.intent}")
 
     if state.intent == "out_of_scope":
         msg = _OUT_OF_SCOPE_ZH if language == "zh" else _OUT_OF_SCOPE_EN
@@ -99,6 +105,54 @@ async def run_pipeline(
 
     if state.intent == "transfer":
         state.should_transfer = True
+        state.total_latency_ms = int((time.time() - start) * 1000)
+        return state
+
+    if state.intent == "lead_capture":
+        from core.rag.lead_collector import (
+            extract_info,
+            get_next_missing_field,
+            calculate_intent_score,
+            prompt_for,
+        )
+
+        lead_info = dict(state.lead_info or {})
+
+        # 把本次用户输入写入下一个缺失字段
+        next_missing = get_next_missing_field(lead_info)
+        if next_missing:
+            extracted = await extract_info(
+                user_query, next_missing["key"], language
+            )
+            if extracted:
+                lead_info[next_missing["key"]] = extracted
+
+        state.lead_info = lead_info
+        next_missing = get_next_missing_field(lead_info)
+
+        if next_missing:
+            prompt = prompt_for(next_missing, language)
+            state.generated_answer = prompt
+            state.is_grounded = True
+            state.hallucination_action = "pass"
+            await _save_lead_state(state.session_id, lead_info)
+            if on_token:
+                await on_token(prompt)
+        else:
+            state.lead_info["_score"] = calculate_intent_score(lead_info)
+            state.lead_info["_complete"] = True
+            complete_msg = (
+                "感谢您提供的信息！我们已记录您的需求，业务人员将在 24 小时内与您联系。"
+                if language == "zh"
+                else "Thank you for your information! Our team will contact you within 24 hours."
+            )
+            state.generated_answer = complete_msg
+            state.is_grounded = True
+            state.hallucination_action = "pass"
+            await _clear_lead_state(state.session_id)
+            if on_token:
+                await on_token(complete_msg)
+
         state.total_latency_ms = int((time.time() - start) * 1000)
         return state
 
@@ -183,3 +237,46 @@ async def _write_semantic_cache(state: RAGState) -> None:
     await cache_set(
         _redis, state.bot_id, state.user_query, state.generated_answer
     )
+
+
+# ── Lead capture 多轮状态（Redis 键：lead_state:{session_id}）────────
+_LEAD_STATE_PREFIX = "lead_state:"
+_LEAD_STATE_TTL = 3600  # 1 小时未完成自动清除
+
+
+async def _load_lead_state(session_id: str) -> dict:
+    if _redis is None:
+        return {}
+    try:
+        import json
+        raw = await _redis.get(_LEAD_STATE_PREFIX + session_id)
+        return json.loads(raw) if raw else {}
+    except Exception as e:
+        logger.warning(f"lead_state load error: {e}")
+        return {}
+
+
+async def _save_lead_state(session_id: str, lead_info: dict) -> None:
+    if _redis is None:
+        return
+    try:
+        import json
+        persistable = {
+            k: v for k, v in lead_info.items() if not k.startswith("_")
+        }
+        await _redis.setex(
+            _LEAD_STATE_PREFIX + session_id,
+            _LEAD_STATE_TTL,
+            json.dumps(persistable, ensure_ascii=False),
+        )
+    except Exception as e:
+        logger.warning(f"lead_state save error: {e}")
+
+
+async def _clear_lead_state(session_id: str) -> None:
+    if _redis is None:
+        return
+    try:
+        await _redis.delete(_LEAD_STATE_PREFIX + session_id)
+    except Exception as e:
+        logger.warning(f"lead_state clear error: {e}")

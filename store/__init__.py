@@ -4,6 +4,7 @@ from store import (
     invitation_store,
     refresh_token_store,
     bot_store,
+    lead_store,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "invitation_store",
     "refresh_token_store",
     "bot_store",
+    "lead_store",
 ]

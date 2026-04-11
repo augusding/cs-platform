@@ -129,6 +129,40 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
                 )
                 await quota_inc(redis, tenant_id)
 
+            # Lead capture 完成时持久化 + 触发通知
+            if state.lead_info.get("_complete"):
+                clean_info = {
+                    k: v for k, v in state.lead_info.items()
+                    if not k.startswith("_")
+                }
+                intent_score = float(state.lead_info.get("_score", 0.5))
+                try:
+                    from store.lead_store import create_lead
+                    lead = await create_lead(
+                        db, tenant_id, key_bot_id, session_id,
+                        clean_info, intent_score,
+                    )
+                    try:
+                        import redis as redis_lib
+                        from rq import Queue as RQueue
+                        from config import settings as cfg
+                        r = redis_lib.from_url(cfg.REDIS_URL)
+                        q = RQueue("notifications", connection=r)
+                        from job_queue.tasks.notifications import (
+                            send_lead_notification,
+                        )
+                        q.enqueue(
+                            send_lead_notification,
+                            str(lead["id"]), tenant_id, key_bot_id,
+                            job_timeout=60,
+                        )
+                    except Exception as ne:
+                        logger.warning(
+                            f"Lead notification enqueue failed: {ne}"
+                        )
+                except Exception as le:
+                    logger.error(f"Lead save failed: {le}")
+
             done_payload = {
                 "type": "done",
                 "session_id": session_id,
@@ -147,6 +181,33 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
                         else "Transferring to human agent."
                     ),
                 })
+
+                # 异步通知人工接管 + 更新 session 状态
+                try:
+                    import redis as redis_lib
+                    from rq import Queue as RQueue
+                    from config import settings as cfg
+                    r = redis_lib.from_url(cfg.REDIS_URL)
+                    q = RQueue("notifications", connection=r)
+                    from job_queue.tasks.notifications import (
+                        send_human_transfer_notification,
+                    )
+                    q.enqueue(
+                        send_human_transfer_notification,
+                        session_id, tenant_id,
+                        job_timeout=30,
+                    )
+                except Exception as te:
+                    logger.warning(
+                        f"Transfer notification enqueue failed: {te}"
+                    )
+
+                from store.base import execute as db_execute
+                await db_execute(
+                    db,
+                    "UPDATE sessions SET status='transferred' WHERE id=$1",
+                    session_id,
+                )
 
             await _send(ws, done_payload)
 

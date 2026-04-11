@@ -61,11 +61,33 @@
   frontend/src/api/client.ts：axios + JWT 自动附加 + 401 重定向登录
   构建验证：tsc --noEmit 通过；vite build 输出 214KB JS + 15KB CSS
 
+- Week 5 Day 1-5：Lead Capture + 通知推送 + 人工接管
+  store/lead_store.py：create/list/get/update_status，lead_info JSONB
+  core/rag/lead_collector.py：DEFAULT_FIELDS（product/qty/price/contact）
+    extract_info Qwen 单字段抽取，prompt_for / get_next_missing_field / intent_score
+  core/engine.py：lead_capture 分支
+    关键修复：规范用 state.lead_info 在 WS 消息间"持久化"→ 失败
+    改用 Redis key=lead_state:{session_id} TTL 1h 保存部分状态
+    首轮前 _load_lead_state → 存在则强制 intent=lead_capture（跳过 cache+router）
+  job_queue/tasks/notifications.py：SMTP 邮件（未配置 SMTP_HOST 时静默跳过）
+  api/routes/leads.py：GET/list + GET/{id} + PUT/{id} 状态更新
+  api/routes/chat.py：_complete 时 create_lead + RQ enqueue 邮件；
+    should_transfer 时 RQ enqueue 人工接管通知 + sessions.status=transferred
+  config.py：SMTP_HOST/PORT/USERNAME/PASSWORD/FROM_NAME
+  frontend/src/pages/Leads.tsx：5 页面 Admin 增加线索列表 + 状态流转
+  端到端验证（多轮 LLM 驱动）：
+    T1 '我想采购一批蓝牙耳机' → extract product_requirement → ask quantity
+    T2 '大概需要5000个' → extract quantity → ask target_price
+    T3 '目标价格20元每个以内' → extract target_price → ask contact
+    T4 '我的邮箱 alice@example.com' → extract contact → 全部完成 → 感谢消息
+    DB lead 入库 intent_score=1.0 status=new
+    PUT /api/leads/{id} status → contacted 成功
+  前端构建：tsc --noEmit + vite build → 217KB JS + 17KB CSS
+
 [进行中]
-- Week 5：询盘捕获 + 通知 + 人工接管
+- Week 6：套餐/配额 + 支付
 
 [待开始]
-- Week 6：套餐/配额 + 支付
 - Week 7：CI/CD + Golden Set + 压测
 
 [已知问题/注意事项]
