@@ -72,34 +72,90 @@ async def list_sessions(request: web.Request) -> web.Response:
     })
 
 
+_PERIOD_EXPR = {
+    "today": "{col} >= CURRENT_DATE",
+    "week": "{col} >= CURRENT_DATE - INTERVAL '7 days'",
+    "month": "{col} >= CURRENT_DATE - INTERVAL '30 days'",
+}
+
+
+def _period_clause(period: str, col: str) -> str:
+    template = _PERIOD_EXPR.get(period, _PERIOD_EXPR["month"])
+    return template.format(col=col)
+
+
 @routes.get("/api/admin/stats")
 async def get_stats(request: web.Request) -> web.Response:
     tenant_id = request["tenant_id"]
     db = request.app["db"]
 
+    period = request.rel_url.query.get("period", "month")
+    if period not in _PERIOD_EXPR:
+        period = "month"
+    s_clause = _period_clause(period, "started_at")
+    js_clause = _period_clause(period, "s.started_at")
+
     total = await fetch_val(
         db,
-        "SELECT COUNT(*) FROM sessions WHERE tenant_id = $1",
+        f"SELECT COUNT(*) FROM sessions "
+        f"WHERE tenant_id = $1 AND {s_clause}",
         tenant_id,
     ) or 0
+
     resolved = await fetch_val(
         db,
-        "SELECT COUNT(*) FROM sessions WHERE tenant_id = $1 AND status = 'closed'",
+        f"SELECT COUNT(*) FROM sessions "
+        f"WHERE tenant_id = $1 AND is_resolved = TRUE AND {s_clause}",
         tenant_id,
     ) or 0
+
     no_hit = await fetch_val(
         db,
-        "SELECT COUNT(*) FROM messages WHERE tenant_id = $1 AND is_grounded = FALSE",
+        f"""
+        SELECT COUNT(*) FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE m.tenant_id = $1
+          AND m.role = 'assistant'
+          AND m.is_grounded = FALSE
+          AND {js_clause}
+        """,
+        tenant_id,
+    ) or 0
+
+    total_assistant_msgs = await fetch_val(
+        db,
+        f"""
+        SELECT COUNT(*) FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE m.tenant_id = $1
+          AND m.role = 'assistant'
+          AND {js_clause}
+        """,
+        tenant_id,
+    ) or 0
+
+    avg_lat = await fetch_val(
+        db,
+        f"""
+        SELECT ROUND(AVG(m.latency_ms)) FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE m.tenant_id = $1
+          AND m.role = 'assistant'
+          AND m.latency_ms IS NOT NULL
+          AND {js_clause}
+        """,
         tenant_id,
     ) or 0
 
     total_i = int(total)
+    msgs_i = max(int(total_assistant_msgs), 1)
     return web.json_response({
         "data": {
             "total_sessions": total_i,
             "resolved_rate": round(float(resolved) / max(total_i, 1), 3),
-            "no_hit_rate": round(float(no_hit) / max(total_i * 2, 1), 3),
-            "avg_latency_ms": 0,
+            "no_hit_rate": round(float(no_hit) / msgs_i, 3),
+            "avg_latency_ms": int(avg_lat),
+            "period": period,
         }
     })
 

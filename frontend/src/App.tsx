@@ -7,6 +7,8 @@ import Sessions from './pages/Sessions'
 import SessionDetail from './pages/SessionDetail'
 import Leads from './pages/Leads'
 import Billing from './pages/Billing'
+import Members from './pages/Members'
+import Profile from './pages/Profile'
 import Login from './pages/Login'
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -16,6 +18,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     { to: '/knowledge', label: '知识库' },
     { to: '/sessions', label: '会话记录' },
     { to: '/leads', label: '询盘线索' },
+    { to: '/members', label: '成员管理' },
     { to: '/billing', label: '套餐管理' },
   ]
   const logout = () => {
@@ -48,12 +51,26 @@ function Layout({ children }: { children: React.ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <button
-          onClick={logout}
-          className="p-4 text-sm text-gray-400 hover:text-gray-600 text-left border-t border-gray-100"
-        >
-          退出登录
-        </button>
+        <div className="border-t border-gray-100 p-3 space-y-1">
+          <NavLink
+            to="/profile"
+            className={({ isActive }) =>
+              `block px-3 py-2 rounded-lg text-sm transition-colors ${
+                isActive
+                  ? 'bg-blue-50 text-blue-600 font-medium'
+                  : 'text-gray-500 hover:bg-gray-50'
+              }`
+            }
+          >
+            个人设置
+          </NavLink>
+          <button
+            onClick={logout}
+            className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+          >
+            退出登录
+          </button>
+        </div>
       </aside>
       <main className="flex-1 p-8 overflow-auto">{children}</main>
     </div>
@@ -87,6 +104,8 @@ export default function App() {
                   <Route path="/sessions/:sessionId" element={<SessionDetail />} />
                   <Route path="/leads" element={<Leads />} />
                   <Route path="/billing" element={<Billing />} />
+                  <Route path="/members" element={<Members />} />
+                  <Route path="/profile" element={<Profile />} />
                 </Routes>
               </Layout>
             </PrivateRoute>

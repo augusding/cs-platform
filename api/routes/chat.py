@@ -118,6 +118,7 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
                 content=state.generated_answer,
                 grader_score=state.grader_score,
                 is_grounded=state.is_grounded,
+                latency_ms=state.total_latency_ms,
             )
 
             # 写回 session 缓存并累加配额计数

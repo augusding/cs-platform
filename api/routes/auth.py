@@ -1,8 +1,11 @@
 """
-认证路由：注册 / 登录 / 刷新 / 登出 / 邀请 / 接受邀请
+认证路由：注册 / 登录 / 刷新 / 登出 / 邀请 / 接受邀请 / 个人设置
 """
-import os
 import logging
+import os
+from datetime import date, datetime
+from uuid import UUID
+
 from aiohttp import web
 
 from auth.jwt_utils import (
@@ -18,6 +21,7 @@ from store import (
     invitation_store,
     refresh_token_store,
 )
+from store.base import execute, fetch_one
 
 logger = logging.getLogger(__name__)
 routes = web.RouteTableDef()
@@ -266,6 +270,94 @@ async def accept_invite_handler(request: web.Request) -> web.Response:
     resp = web.json_response({"data": resp_data}, status=201)
     _set_refresh_cookie(resp, refresh_token)
     return resp
+
+
+def _serialize(value):
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return value
+
+
+# ── GET /api/auth/me ─────────────────────────────────────
+@routes.get("/api/auth/me")
+async def get_me(request: web.Request) -> web.Response:
+    db = request.app["db"]
+    row = await fetch_one(
+        db,
+        """
+        SELECT id, tenant_id, email, name, role, status, created_at
+        FROM users WHERE id = $1
+        """,
+        request["user_id"],
+    )
+    if not row:
+        raise web.HTTPNotFound()
+    data = {k: _serialize(v) for k, v in dict(row).items()}
+    return web.json_response({"data": data})
+
+
+# ── PUT /api/auth/me ─────────────────────────────────────
+@routes.put("/api/auth/me")
+async def update_me(request: web.Request) -> web.Response:
+    data = await request.json()
+    user_id = request["user_id"]
+    db = request.app["db"]
+
+    name = (data.get("name") or "").strip()
+    if not name:
+        raise web.HTTPBadRequest(reason="name is required")
+
+    await execute(
+        db,
+        "UPDATE users SET name = $1 WHERE id = $2",
+        name, user_id,
+    )
+    return web.json_response({"data": {"name": name}})
+
+
+# ── PUT /api/auth/change-password ────────────────────────
+@routes.put("/api/auth/change-password")
+async def change_password_handler(request: web.Request) -> web.Response:
+    data = await request.json()
+    old_pwd = data.get("old_password", "")
+    new_pwd = data.get("new_password", "")
+    user_id = request["user_id"]
+
+    if len(new_pwd) < 8:
+        raise web.HTTPBadRequest(
+            reason="New password must be at least 8 characters"
+        )
+
+    db = request.app["db"]
+    row = await fetch_one(
+        db, "SELECT password_hash FROM users WHERE id = $1", user_id,
+    )
+    if not row or not row["password_hash"]:
+        raise web.HTTPBadRequest(reason="Password not set")
+
+    if not verify_password(old_pwd, row["password_hash"]):
+        raise web.HTTPUnauthorized(reason="Old password is incorrect")
+
+    new_hash = hash_password(new_pwd)
+    await execute(
+        db, "UPDATE users SET password_hash = $1 WHERE id = $2",
+        new_hash, user_id,
+    )
+
+    # 吊销所有 refresh token，强制重新登录
+    await execute(
+        db,
+        """
+        UPDATE refresh_tokens SET revoked_at = NOW()
+        WHERE user_id = $1 AND revoked_at IS NULL
+        """,
+        user_id,
+    )
+    return web.json_response({
+        "data": {"message": "Password updated. Please login again."}
+    })
 
 
 def register(app: web.Application) -> None:

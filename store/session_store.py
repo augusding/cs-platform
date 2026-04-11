@@ -66,17 +66,19 @@ async def save_message(
     grader_score: float | None = None,
     is_grounded: bool | None = None,
     tokens_used: int | None = None,
+    latency_ms: int | None = None,
 ) -> dict:
     row = await execute_returning(
         pool,
         """
         INSERT INTO messages
-            (session_id, tenant_id, role, content, grader_score, is_grounded, tokens_used)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (session_id, tenant_id, role, content,
+             grader_score, is_grounded, tokens_used, latency_ms)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id, role, content, created_at
         """,
         session_id, tenant_id, role, content,
-        grader_score, is_grounded, tokens_used,
+        grader_score, is_grounded, tokens_used, latency_ms,
     )
     await execute(
         pool,
