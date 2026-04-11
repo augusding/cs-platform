@@ -17,6 +17,7 @@ from api.routes.chat import register as reg_chat
 from api.routes.widget import register as reg_widget
 from api.routes.admin import register as reg_admin
 from api.routes.leads import register as reg_leads
+from api.routes.billing import register as reg_billing
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ def create_app() -> web.Application:
     reg_chat(app)
     reg_admin(app)
     reg_leads(app)
+    reg_billing(app)
 
     # ─── 生命周期钩子 ──────────────────────────────────────
     app.on_startup.append(_on_startup)

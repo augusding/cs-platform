@@ -4,6 +4,7 @@ import Bots from './pages/Bots'
 import Knowledge from './pages/Knowledge'
 import Sessions from './pages/Sessions'
 import Leads from './pages/Leads'
+import Billing from './pages/Billing'
 import Login from './pages/Login'
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     { to: '/knowledge', label: '知识库' },
     { to: '/sessions', label: '会话记录' },
     { to: '/leads', label: '询盘线索' },
+    { to: '/billing', label: '套餐管理' },
   ]
   const logout = () => {
     localStorage.removeItem('access_token')
@@ -80,6 +82,7 @@ export default function App() {
                   <Route path="/knowledge" element={<Knowledge />} />
                   <Route path="/sessions" element={<Sessions />} />
                   <Route path="/leads" element={<Leads />} />
+                  <Route path="/billing" element={<Billing />} />
                 </Routes>
               </Layout>
             </PrivateRoute>

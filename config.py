@@ -90,6 +90,12 @@ class Settings:
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
     SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "CS Platform")
 
+    # ─── 微信支付（未配置时 create-order 仍可用，仅支持模拟支付）────
+    WECHAT_PAY_MCH_ID: str = os.getenv("WECHAT_PAY_MCH_ID", "")
+    WECHAT_PAY_API_KEY: str = os.getenv("WECHAT_PAY_API_KEY", "")
+    WECHAT_PAY_APP_ID: str = os.getenv("WECHAT_PAY_APP_ID", "")
+    WECHAT_PAY_NOTIFY_URL: str = os.getenv("WECHAT_PAY_NOTIFY_URL", "")
+
 
 # 全局单例，整个应用通过 `from config import settings` 使用
 settings = Settings()

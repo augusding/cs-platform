@@ -120,6 +120,19 @@
         appendMsg("发送失败，请重试", "bot");
         sendEl.removeAttribute("disabled");
         inputEl.removeAttribute("disabled");
+      } else if (msg.type === "private_domain") {
+        var card = document.createElement("div");
+        card.className = "msg bot";
+        card.style.padding = "12px";
+        var html = "<p style='font-size:13px;margin-bottom:8px;'>"
+          + (msg.message || "") + "</p>";
+        if (msg.qr_code_url) {
+          html += "<img src='" + msg.qr_code_url
+            + "' style='width:120px;height:120px;display:block;'/>";
+        }
+        card.innerHTML = html;
+        messagesEl.appendChild(card);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
       } else if (msg.type === "ping") {
         if (ws) ws.send(JSON.stringify({ type: "pong" }));
       }

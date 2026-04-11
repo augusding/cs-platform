@@ -18,6 +18,8 @@ PUBLIC_PATHS: set[str] = {
     "/api/auth/logout",
     "/api/auth/invite/accept",
     "/widget.js",
+    "/api/billing/plans",
+    "/api/billing/webhook",
 }
 
 
@@ -56,6 +58,32 @@ async def jwt_middleware(request: web.Request, handler):
         request["bot_id"] = bot["id"]
         request["tenant_id"] = bot["tenant_id"]
         request["role"] = "bot"
+
+        # ── 配额预检（按月消息数） ───────────────────────────
+        # 不在此处 increment：每条消息由 chat.py 处理时递增，避免与
+        # WebSocket 连接级的检查重复计数。
+        try:
+            redis_client = request.app.get("redis")
+            if redis_client is not None:
+                from cache.quota import check_limit
+                from store.base import fetch_val
+                quota = await fetch_val(
+                    request.app["db"],
+                    "SELECT monthly_quota FROM tenants WHERE id = $1",
+                    bot["tenant_id"],
+                )
+                quota = int(quota) if quota is not None else 200
+                if not await check_limit(
+                    redis_client, str(bot["tenant_id"]), quota
+                ):
+                    raise web.HTTPPaymentRequired(
+                        reason="Monthly quota exceeded. Please upgrade your plan."
+                    )
+        except web.HTTPPaymentRequired:
+            raise
+        except Exception as qe:
+            logger.warning(f"Quota check error: {qe}")
+
         return await handler(request)
 
     # ── 3. 标准 JWT 路由 ──────────────────────────────────

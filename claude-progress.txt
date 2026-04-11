@@ -84,11 +84,33 @@
     PUT /api/leads/{id} status → contacted 成功
   前端构建：tsc --noEmit + vite build → 217KB JS + 17KB CSS
 
+- Week 6 Day 1-5：套餐/配额 + 模拟支付 + 私域引流
+  迁移 a009：tenants.plan_expires_at / billing_email + orders 表
+  store/plan_store.py：PLAN_CONFIG (free/entity/trade/pro)，
+    get_tenant_plan / upgrade_plan / create_order / confirm_order
+  config.py：WECHAT_PAY_* 四项配置占位
+  api/routes/billing.py：plans / status / create-order / webhook / simulate-pay
+    安全修正：规范 simulate-pay 未校验订单归属，已加 tenant_id 校验防跨租户
+    simulate-pay 仅在 DEBUG=true 时可用（生产返回 404）
+  api/middleware.py：
+    - /api/billing/plans 和 /webhook 加入 PUBLIC_PATHS（status/create-order/simulate-pay 仍走 JWT）
+    - bot-key 分支追加月度配额预检：check_limit 过则 402，不在此处 increment（避免与 chat.py 双计数）
+  api/routes/chat.py：私域引流帧推送（bot.private_domain_config 配置时，每 3 条 knowledge_qa 消息推一次 QR）
+  widget/widget.js：private_domain 帧处理（消息 + QR 图卡片）
+  frontend/src/pages/Billing.tsx：套餐卡片 + 当前标识 + 一键模拟升级
+  端到端验证：
+    BEFORE: free / 1 bot / 200
+    CREATE ORDER 201 CS20260411033950913FF771 amount=299
+    SIMULATE 200 → AFTER: trade / 3 / 5000 + expires 2026-05-12
+    INVALID PLAN → 400；DOUBLE PAY → 400
+    Quota 0 → WS handshake 402 ✓
+  前端构建：220KB JS + 17.5KB CSS
+
 [进行中]
-- Week 6：套餐/配额 + 支付
+- Week 7：CI/CD + Golden Set + 压测
 
 [待开始]
-- Week 7：CI/CD + Golden Set + 压测
+  （本里程碑结束后）
 
 [已知问题/注意事项]
 - queue/ 目录已改名为 job_queue/（避免与Python内置queue模块冲突）

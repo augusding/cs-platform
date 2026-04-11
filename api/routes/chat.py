@@ -211,6 +211,33 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
 
             await _send(ws, done_payload)
 
+            # 私域引流：Bot 配置了 private_domain_config 时，每 3 条消息推一次
+            private_cfg = bot.get("private_domain_config")
+            if isinstance(private_cfg, str):
+                try:
+                    import json as _json
+                    private_cfg = _json.loads(private_cfg)
+                except Exception:
+                    private_cfg = None
+            if (
+                isinstance(private_cfg, dict)
+                and state.intent == "knowledge_qa"
+                and state.is_grounded
+                and redis is not None
+            ):
+                try:
+                    count_key = f"pd_count:{session_id}"
+                    count = await redis.incr(count_key)
+                    await redis.expire(count_key, 3600)
+                    if count % 3 == 0:
+                        await _send(ws, {
+                            "type": "private_domain",
+                            "message": private_cfg.get("message", ""),
+                            "qr_code_url": private_cfg.get("qr_code_url", ""),
+                        })
+                except Exception as pe:
+                    logger.warning(f"private_domain push failed: {pe}")
+
         elif msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSE):
             break
 
