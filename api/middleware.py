@@ -1,9 +1,12 @@
 """
-JWT 鉴权中间件。
+HTTP 中间件：CORS + 限流 + JWT 鉴权。
 注入 request["tenant_id"] / request["user_id"] / request["role"]。
 Widget 接口走 Bot API Key 鉴权（无需 JWT）。
 """
 import logging
+import time
+from collections import defaultdict, deque
+
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
@@ -110,3 +113,73 @@ async def jwt_middleware(request: web.Request, handler):
     request["plan"] = payload.get("plan", "free")
 
     return await handler(request)
+
+
+# ── 简单内存限流（生产环境建议改为 Redis token bucket）────────
+# { ip: deque[timestamps] }
+_rate_limit_buckets: dict[str, deque] = defaultdict(deque)
+_RATE_WINDOW_SECONDS = 60
+
+
+@web.middleware
+async def rate_limit_middleware(request: web.Request, handler):
+    """IP 级基础限流（仅 /api/ 路径），防 DDoS。"""
+    if not request.path.startswith("/api/"):
+        return await handler(request)
+
+    from config import settings
+    limit = settings.RATE_LIMIT_PER_MIN
+    ip = request.remote or "unknown"
+    now = time.time()
+    bucket = _rate_limit_buckets[ip]
+    while bucket and now - bucket[0] >= _RATE_WINDOW_SECONDS:
+        bucket.popleft()
+
+    if len(bucket) >= limit:
+        raise web.HTTPTooManyRequests(
+            reason="Too many requests. Please slow down.",
+            headers={"Retry-After": "60"},
+        )
+
+    bucket.append(now)
+    return await handler(request)
+
+
+# ── CORS ─────────────────────────────────────────────────────
+@web.middleware
+async def cors_middleware(request: web.Request, handler):
+    """CORS 处理，支持 Widget 跨域调用。"""
+    from config import settings
+    allowed = settings.WIDGET_ALLOWED_ORIGINS
+    origin = request.headers.get("Origin", "")
+
+    if allowed == "*":
+        allow_origin = "*"
+    else:
+        whitelist = [o.strip() for o in allowed.split(",") if o.strip()]
+        allow_origin = origin if origin in whitelist else (
+            whitelist[0] if whitelist else ""
+        )
+
+    if request.method == "OPTIONS":
+        return web.Response(
+            status=204,
+            headers={
+                "Access-Control-Allow-Origin": allow_origin,
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Bot-Key",
+                "Access-Control-Max-Age": "86400",
+            },
+        )
+
+    try:
+        response = await handler(request)
+    except web.HTTPException as exc:
+        exc.headers["Access-Control-Allow-Origin"] = allow_origin
+        raise
+
+    response.headers["Access-Control-Allow-Origin"] = allow_origin
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Authorization, Content-Type, X-Bot-Key"
+    )
+    return response

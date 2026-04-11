@@ -96,6 +96,12 @@ class Settings:
     WECHAT_PAY_APP_ID: str = os.getenv("WECHAT_PAY_APP_ID", "")
     WECHAT_PAY_NOTIFY_URL: str = os.getenv("WECHAT_PAY_NOTIFY_URL", "")
 
+    # ─── 限流 + CORS ──────────────────────────────────────────
+    # 每 IP 每分钟最多请求数（仅限 /api/ 前缀）。
+    RATE_LIMIT_PER_MIN: int = int(os.getenv("RATE_LIMIT_PER_MIN", "300"))
+    # Widget 允许的 Origin。生产必须收紧为具体域名列表（逗号分隔）。
+    WIDGET_ALLOWED_ORIGINS: str = os.getenv("WIDGET_ALLOWED_ORIGINS", "*")
+
 
 # 全局单例，整个应用通过 `from config import settings` 使用
 settings = Settings()

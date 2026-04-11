@@ -106,8 +106,31 @@
     Quota 0 → WS handshake 402 ✓
   前端构建：220KB JS + 17.5KB CSS
 
+- Week 7：CI/CD + Golden Set + 安全加固 + 上线准备
+  tests/golden_set/cases.json：10 条基础场景（greeting/oos/transfer/lead/security，中英各半）
+  tests/test_golden_set.py：自动登录→创建临时 bot→rotate key→跑用例→清理
+    评分：grounded(0.3) + expected_contains OR 匹配(0.4) + transfer(0.3) - penalty
+    首轮自动写 baseline，后续对比；delta < -0.05 标记 REGRESSED 并退出非零
+  tests/test_tenant_isolation.py：8 个用例（注册 A+B、A 建 bot、B list/GET/PUT/DELETE/admin 全部 403 或隐藏）
+  tests/locustfile.py：50 并发压测模板（/health, /bots, /billing/plans, /admin/stats）
+  tests/run_all.py：一键回归 + 基础安全检查（.env git history, sanitize_input）
+  .github/workflows/ci.yml：postgres+redis services → migrations → 后台起 server →
+    /health wait → test_auth + test_tenant_isolation → frontend tsc + build
+  api/middleware.py：rate_limit_middleware（IP/分钟窗口 deque）+ cors_middleware（OPTIONS 204）
+  api/app.py：中间件链 = [cors, rate_limit, jwt]
+  main.py：JSON 结构化日志（_JsonFormatter 捕获所有 extra 字段，保留 exc_info）
+  config.py：RATE_LIMIT_PER_MIN / WIDGET_ALLOWED_ORIGINS
+  迁移 a010：orders.tenant_id FK → ON DELETE CASCADE（修复 Week 6 遗留的 test cleanup 阻塞）
+  tests/test_auth.py cleanup_test_data：按依赖顺序清 child 表（child → user → tenant）
+  端到端验证：
+    test_auth 13/13 ✓
+    test_tenant_isolation 8/8 ✓
+    CORS OPTIONS → 204 + headers ✓
+    rate limit 310 burst → 280×200 + 30×429 ✓
+    frontend build 220KB ✓
+
 [进行中]
-- Week 7：CI/CD + Golden Set + 压测
+  （Week 1-7 已完成，v1.0.0 MVP 就绪）
 
 [待开始]
   （本里程碑结束后）

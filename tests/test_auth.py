@@ -27,18 +27,46 @@ TEST_TENANT_NAMES = ("测试企业A", "测试企业B", "另一家企业")
 
 
 async def cleanup_test_data() -> None:
-    """删除上次测试遗留的数据，使测试可重复运行。"""
+    """
+    删除上次测试遗留的数据，使测试可重复运行。
+
+    部分 child 表（faq_items / knowledge_sources / bots）通过
+    users.id 作为 created_by 外键关联，且未配置 CASCADE；因此
+    不能直接 DELETE FROM tenants，必须先按 tenant_id 清 child 表。
+    """
     conn = await asyncpg.connect(settings.DATABASE_URL)
     try:
-        await conn.execute(
-            "DELETE FROM tenants WHERE id IN "
-            "(SELECT tenant_id FROM users WHERE email = ANY($1::text[]))",
-            list(TEST_EMAILS),
+        tenant_ids = await conn.fetch(
+            """
+            SELECT id FROM tenants
+            WHERE id IN (SELECT tenant_id FROM users WHERE email = ANY($1::text[]))
+               OR name = ANY($2::text[])
+            """,
+            list(TEST_EMAILS), list(TEST_TENANT_NAMES),
         )
-        await conn.execute(
-            "DELETE FROM tenants WHERE name = ANY($1::text[])",
-            list(TEST_TENANT_NAMES),
-        )
+        if not tenant_ids:
+            return
+        ids = [row["id"] for row in tenant_ids]
+
+        # 按依赖顺序清理（child 表优先）
+        for table in (
+            "messages",
+            "leads",
+            "sessions",
+            "faq_items",
+            "knowledge_sources",
+            "refresh_tokens",
+            "invitations",
+            "orders",
+            "bots",
+            "users",
+            "tenants",
+        ):
+            col = "tenant_id" if table != "tenants" else "id"
+            await conn.execute(
+                f"DELETE FROM {table} WHERE {col} = ANY($1::uuid[])",
+                ids,
+            )
     finally:
         await conn.close()
 

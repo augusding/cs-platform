@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: cs_user
+          POSTGRES_PASSWORD: cs_pass
+          POSTGRES_DB: cs_platform
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://cs_user:cs_pass@localhost:5432/cs_platform
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-test-secret-please-change-in-production
+      DEBUG: "true"
+      APP_HOST: 127.0.0.1
+      APP_PORT: "8080"
+      QWEN_API_KEY: ci-placeholder
+      DEEPSEEK_API_KEY: ci-placeholder
+      EMBEDDING_API_KEY: ci-placeholder
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run migrations
+        run: alembic upgrade head
+
+      - name: Start API server (background)
+        run: |
+          python main.py serve > server.log 2>&1 &
+          echo $! > server.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/health > /dev/null; then
+              echo "Server is up"
+              break
+            fi
+            sleep 1
+          done
+          curl -f http://127.0.0.1:8080/health
+
+      - name: Auth tests
+        run: python tests/test_auth.py
+
+      - name: Tenant isolation tests
+        run: python tests/test_tenant_isolation.py
+
+      - name: Stop API server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+          fi
+          echo "--- server.log ---"
+          cat server.log || true
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+      - run: cd frontend && npx tsc --noEmit
+      - run: cd frontend && npm run build

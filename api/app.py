@@ -6,7 +6,11 @@ import asyncio
 import logging
 from aiohttp import web
 
-from api.middleware import jwt_middleware
+from api.middleware import (
+    jwt_middleware,
+    rate_limit_middleware,
+    cors_middleware,
+)
 
 # ─── 路由注册（按开发阶段解注释）────────────────────────
 from api.routes.health import register as reg_health
@@ -56,7 +60,13 @@ async def _on_cleanup(app: web.Application) -> None:
 
 def create_app() -> web.Application:
     """创建并配置 aiohttp Application"""
-    app = web.Application(middlewares=[jwt_middleware])
+    app = web.Application(
+        middlewares=[
+            cors_middleware,        # 最外层：CORS / preflight
+            rate_limit_middleware,  # 第二层：IP 限流
+            jwt_middleware,         # 第三层：鉴权
+        ]
+    )
 
     # ─── 注册路由 ──────────────────────────────────────────
     reg_health(app)
