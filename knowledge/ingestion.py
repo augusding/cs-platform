@@ -80,14 +80,21 @@ async def _ingest(
         logger.info(f"Ingestion complete: source={source_id} chunks={count}")
 
     except Exception as e:
-        logger.error(f"Ingestion failed for {source_id}: {e}")
-        await pool.execute(
-            """
-            UPDATE knowledge_sources
-            SET status = 'failed', error_msg = $1, updated_at = NOW()
-            WHERE id = $2
-            """,
-            str(e)[:500], source_id,
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(
+            f"Ingestion FAILED for source={source_id}: {e}\n{tb}"
         )
+        try:
+            await pool.execute(
+                """
+                UPDATE knowledge_sources
+                SET status = 'failed', error_msg = $1, updated_at = NOW()
+                WHERE id = $2
+                """,
+                str(e)[:500], source_id,
+            )
+        except Exception as db_err:
+            logger.error(f"Failed to update error status: {db_err}")
     finally:
         await pool.close()

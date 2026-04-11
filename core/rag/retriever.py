@@ -46,35 +46,78 @@ async def run(state: RAGState) -> RAGState:
     return state
 
 
+_FAQ_STOP_WORDS = {
+    "的", "了", "是", "在", "有", "和", "与", "或", "怎么", "什么", "如何",
+    "吗", "呢", "啊", "哦", "那", "这",
+    "the", "is", "are", "what", "how", "do", "does", "of", "to", "a", "an",
+}
+
+
 async def _search_faq(state: RAGState) -> list[dict]:
-    """从 DB 检索 FAQ（简单关键词匹配）"""
+    """使用注入的 db_pool 检索 FAQ（按关键词 LIKE 匹配）。"""
+    pool = getattr(state, "db_pool", None)
+    if pool is None:
+        logger.debug("FAQ search skipped: no db_pool in state")
+        return []
+
     try:
-        import asyncpg
-        pool = await asyncpg.create_pool(
-            dsn=settings.DATABASE_URL, min_size=1, max_size=2
-        )
         query_lower = state.user_query.lower()
-        rows = await pool.fetch(
-            """
-            SELECT question, answer, priority
-            FROM faq_items
-            WHERE bot_id = $1 AND is_active = TRUE
-            ORDER BY priority DESC
-            LIMIT 20
-            """,
-            state.bot_id,
-        )
-        await pool.close()
+        # 中英混合：先按空格分词，再对每个分词按字符过滤停用词
+        raw_tokens = query_lower.split()
+        keywords: list[str] = []
+        for tok in raw_tokens:
+            if len(tok) > 1 and tok not in _FAQ_STOP_WORDS:
+                keywords.append(tok)
+        # 没有英文分词时，取整条 query 作为单个关键词（中文短句常见）
+        if not keywords and len(query_lower.strip()) >= 2:
+            keywords = [query_lower.strip()]
+
+        if not keywords:
+            rows = await pool.fetch(
+                """
+                SELECT question, answer, priority
+                FROM faq_items
+                WHERE bot_id = $1 AND is_active = TRUE
+                ORDER BY priority DESC
+                LIMIT 3
+                """,
+                state.bot_id,
+            )
+        else:
+            patterns = [f"%{kw}%" for kw in keywords]
+            rows = await pool.fetch(
+                """
+                SELECT question, answer, priority
+                FROM faq_items
+                WHERE bot_id = $1
+                  AND is_active = TRUE
+                  AND (
+                      LOWER(question) LIKE ANY($2::text[])
+                      OR LOWER(answer)   LIKE ANY($2::text[])
+                  )
+                ORDER BY priority DESC, LENGTH(question) ASC
+                LIMIT 5
+                """,
+                state.bot_id,
+                patterns,
+            )
+
         chunks: list[dict] = []
         for row in rows:
-            if any(kw in row["question"].lower() for kw in query_lower.split()):
-                chunks.append({
-                    "content": f"Q: {row['question']}\nA: {row['answer']}",
-                    "score": 1.0,
-                    "chunk_id": f"faq_{row['question'][:16]}",
-                    "source_id": "faq",
-                })
-        return chunks[:3]
+            chunks.append({
+                "content": f"问：{row['question']}\n答：{row['answer']}",
+                # FAQ 优先级最高，+ priority 微调避免同分
+                "score": 0.95 + (row["priority"] or 0) * 0.001,
+                "chunk_id": f"faq_{row['question'][:20]}",
+                "source_id": "faq",
+                "page": 0,
+            })
+        if chunks:
+            logger.debug(
+                f"FAQ search: {len(chunks)} matches for '{state.user_query[:30]}'"
+            )
+        return chunks
+
     except Exception as e:
         logger.warning(f"FAQ search failed: {e}")
         return []

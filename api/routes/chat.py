@@ -104,6 +104,7 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
                     language=language,
                     history=history,
                     on_token=on_token,
+                    db_pool=db,
                 )
             except Exception as e:
                 logger.error(f"Pipeline error: {e}")

@@ -56,10 +56,12 @@ async def run_pipeline(
     language: str = "zh",
     history: list[dict] | None = None,
     on_token=None,
+    db_pool=None,
 ) -> RAGState:
     """
     执行完整 RAG pipeline，返回最终 RAGState。
     on_token: 流式输出回调，每个 token 调用一次。
+    db_pool:  asyncpg.Pool，注入后节点可直接查 DB（retriever FAQ 等）。
     """
     start = time.time()
     user_query = sanitize_input(user_query)
@@ -71,6 +73,7 @@ async def run_pipeline(
         language=language,
         history=history or [],
     )
+    state.db_pool = db_pool
 
     # ── 中途 lead_capture 检测：有挂起的 lead 状态则跳过缓存 + Router ──
     pending_lead = await _load_lead_state(state.session_id)

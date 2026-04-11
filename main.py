@@ -83,16 +83,35 @@ def cmd_serve() -> None:
 
 
 def cmd_worker() -> None:
-    """启动 RQ Worker（Week 2 知识库摄取时使用）"""
+    """启动 RQ Worker（Week 2 知识库摄取时使用）
+
+    Windows 兼容性：
+    - 无 os.fork() → 用 SimpleWorker 替代默认 Worker（同进程执行任务）
+    - 无 signal.SIGALRM → 用 TimerDeathPenalty 替代默认 UnixSignalDeathPenalty
+    Linux/macOS 继续使用标准 Worker。
+    """
     import redis
-    from rq import Worker, Queue, Connection
+    from rq import Connection, Queue, SimpleWorker, Worker
     from config import settings
 
     conn = redis.from_url(settings.REDIS_URL)
     queues = ["ingestion", "notifications", "signals"]
-    print(f"\n  RQ Worker 已启动，监听队列: {queues}\n")
+
+    if sys.platform == "win32":
+        from rq.timeouts import TimerDeathPenalty
+
+        class WindowsWorker(SimpleWorker):
+            death_penalty_class = TimerDeathPenalty
+
+        worker_cls = WindowsWorker
+        label = "SimpleWorker+TimerDeathPenalty"
+    else:
+        worker_cls = Worker
+        label = "Worker"
+
+    print(f"\n  RQ Worker ({label}) 已启动，监听队列: {queues}\n")
     with Connection(conn):
-        worker = Worker(queues)
+        worker = worker_cls(queues)
         worker.work()
 
 
