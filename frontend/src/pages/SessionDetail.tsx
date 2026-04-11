@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../api/client'
 
@@ -40,6 +40,9 @@ export default function SessionDetail() {
   const navigate = useNavigate()
   const [session, setSession] = useState<Session | null>(null)
   const [transferring, setTransferring] = useState(false)
+  const [liveMessages, setLiveMessages] = useState<Message[]>([])
+  const [replyContent, setReplyContent] = useState('')
+  const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
     if (!sessionId) return
@@ -48,6 +51,56 @@ export default function SessionDetail() {
       .then((r) => setSession(r.data.data))
       .catch(() => {})
   }, [sessionId])
+
+  // 打开 admin 实时监听 WS（任何状态都监听，接管前可实时看对话）
+  useEffect(() => {
+    if (!sessionId) return
+    const token = localStorage.getItem('access_token')
+    if (!token) return
+
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const host = window.location.host
+    const ws = new WebSocket(
+      `${proto}://${host}/api/admin/listen/${sessionId}?key=${encodeURIComponent(token)}`,
+    )
+    wsRef.current = ws
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data)
+        if (msg.type === 'new_message' || msg.type === 'sent') {
+          setLiveMessages((prev) => [
+            ...prev,
+            {
+              id: `live_${Date.now()}_${Math.random()}`,
+              role:
+                msg.type === 'sent'
+                  ? 'human_agent'
+                  : (msg.role as string) || 'assistant',
+              content: msg.content,
+              created_at: new Date().toISOString(),
+            },
+          ])
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return () => {
+      ws.close()
+      wsRef.current = null
+    }
+  }, [sessionId])
+
+  const sendReply = () => {
+    const text = replyContent.trim()
+    if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return
+    }
+    wsRef.current.send(JSON.stringify({ type: 'message', content: text }))
+    setReplyContent('')
+  }
 
   const transfer = async () => {
     if (!confirm('确认接管此会话？接管后 AI 将停止自动回复。')) return
@@ -158,10 +211,47 @@ export default function SessionDetail() {
               </div>
             </div>
           ))}
-          {session.messages.length === 0 && (
+          {liveMessages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex flex-col ${
+                msg.role === 'user' ? 'items-end' : 'items-start'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-xs text-gray-400">
+                  {ROLE_LABEL[msg.role] || msg.role}
+                </span>
+                <span className="text-xs text-green-500">实时</span>
+              </div>
+              <div
+                className={`max-w-[80%] px-3 py-2 rounded-xl text-sm leading-relaxed whitespace-pre-wrap ${
+                  ROLE_STYLE[msg.role] || 'bg-gray-100 text-gray-800'
+                }`}
+              >
+                {msg.content}
+              </div>
+            </div>
+          ))}
+          {session.messages.length === 0 && liveMessages.length === 0 && (
             <p className="text-gray-400 text-sm text-center py-4">暂无消息</p>
           )}
         </div>
+
+        {session.status === 'transferred' && (
+          <div className="mt-4 flex gap-2">
+            <input
+              className="input flex-1"
+              placeholder="输入回复（以人工客服身份发送）..."
+              value={replyContent}
+              onChange={(e) => setReplyContent(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && sendReply()}
+            />
+            <button className="btn-primary px-4" onClick={sendReply}>
+              发送
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

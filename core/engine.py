@@ -2,6 +2,7 @@
 CSEngine：Agentic RAG Pipeline 编排器。
 控制节点执行顺序和 re-retrieve 循环。
 """
+import asyncio
 import logging
 import re
 import time
@@ -185,10 +186,20 @@ async def run_pipeline(
         )
 
     # ── 5. Generator（流式）─────────────────────────────
+    # Generator 流式输出优先保证用户体验；Checker 在流结束后异步触发
+    # 并用 10s timeout 兜底，避免长期挂起
     state = await generator.run(state, on_token=on_token)
 
-    # ── 6. HallucinationChecker ──────────────────────────
-    state = await hallucination_checker.run(state)
+    # ── 6. HallucinationChecker（后台 + timeout） ────────
+    checker_task = asyncio.create_task(hallucination_checker.run(state))
+    try:
+        state = await asyncio.wait_for(checker_task, timeout=10.0)
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"[{state.session_id}] HallucinationChecker timeout, defaulting to pass"
+        )
+        state.is_grounded = True
+        state.hallucination_action = "pass"
     logger.debug(
         f"[{state.session_id}] Hallucination: "
         f"grounded={state.is_grounded} action={state.hallucination_action}"
@@ -198,6 +209,20 @@ async def run_pipeline(
         msg = _CLARIFY_ZH if language == "zh" else _CLARIFY_EN
         state.generated_answer = msg
         state.should_transfer = True
+
+    # ── 7. PostProcess 输出安全过滤 ──────────────────────
+    if state.generated_answer and state.hallucination_action == "pass":
+        try:
+            from core.rag.post_process import run as post_run
+            post_result = await post_run(state.generated_answer)
+            state.generated_answer = post_result["text"]
+            if post_result["pii_detected"]:
+                logger.warning(
+                    f"[{state.session_id}] PII in output: "
+                    f"{[f['type'] for f in post_result['pii_detected']]}"
+                )
+        except Exception as pe:
+            logger.warning(f"[{state.session_id}] PostProcess failed: {pe}")
 
     if state.is_grounded and state.hallucination_action == "pass":
         await _write_semantic_cache(state)

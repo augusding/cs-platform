@@ -62,4 +62,20 @@ async def run(state: RAGState) -> RAGState:
 
     state.intent = intent
     state.skip_retrieval = intent in _SKIP_INTENTS
+
+    # 辅助策略提示：精确/复杂查询让 QueryTransform 选不同策略
+    # 空字符串 = 默认 HyDE
+    query_lower = state.user_query.lower()
+    exact_keywords = [
+        "价格", "多少钱", "规格", "型号", "moq", "最小起订",
+        "delivery", "price", "spec", "size",
+    ]
+    complex_keywords = [
+        "比较", "区别", "同时", "以及", "and", "compare", "difference", "both",
+    ]
+    if any(k in query_lower for k in complex_keywords):
+        state.transform_strategy = "decompose_hint"
+    elif any(k in query_lower for k in exact_keywords):
+        state.transform_strategy = "expansion_hint"
+
     return state

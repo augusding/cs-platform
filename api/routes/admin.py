@@ -1,12 +1,19 @@
-"""Admin Console 数据接口"""
+"""Admin Console 数据接口 + 实时接管 WebSocket"""
+import json
+import logging
 from datetime import date, datetime
 from uuid import UUID
 
-from aiohttp import web
+from aiohttp import WSMsgType, web
 
 from store.base import fetch_all, fetch_one, fetch_val
 
+logger = logging.getLogger(__name__)
 routes = web.RouteTableDef()
+
+# 全局连接注册表：session_id -> set of admin WebSocketResponse
+# 单实例进程内广播；多实例生产环境应改用 Redis Pub/Sub。
+_admin_listeners: dict[str, set[web.WebSocketResponse]] = {}
 
 
 def _serialize(value):
@@ -216,6 +223,112 @@ async def transfer_session(request: web.Request) -> web.Response:
     if result == "UPDATE 0":
         raise web.HTTPForbidden(reason="Session not found")
     return web.json_response({"data": {"message": "Session transferred"}})
+
+
+@routes.get("/api/admin/listen/{session_id}")
+async def admin_listen_ws(request: web.Request) -> web.WebSocketResponse:
+    """Admin 监听特定会话的实时消息推送；接管后可发送 human_agent 消息。"""
+    tenant_id = request["tenant_id"]
+    session_id = request.match_info["session_id"]
+    db = request.app["db"]
+
+    session = await fetch_one(
+        db,
+        "SELECT id, status FROM sessions WHERE id = $1 AND tenant_id = $2",
+        session_id, tenant_id,
+    )
+    if not session:
+        return web.Response(
+            status=403, text="Session not found or access denied"
+        )
+
+    ws = web.WebSocketResponse(heartbeat=30)
+    await ws.prepare(request)
+
+    _admin_listeners.setdefault(session_id, set()).add(ws)
+    logger.info(
+        f"Admin WS connected session={session_id} "
+        f"listeners={len(_admin_listeners[session_id])}"
+    )
+
+    try:
+        await ws.send_json({
+            "type": "connected",
+            "session_id": session_id,
+            "status": session["status"],
+        })
+
+        async for msg in ws:
+            if msg.type == WSMsgType.TEXT:
+                try:
+                    data = json.loads(msg.data)
+                except json.JSONDecodeError:
+                    continue
+
+                if data.get("type") != "message":
+                    continue
+                content = (data.get("content") or "").strip()
+                if not content:
+                    continue
+
+                from store.session_store import save_message
+                await save_message(
+                    db, session_id, tenant_id,
+                    role="human_agent", content=content,
+                )
+
+                # 推送给访客侧
+                await _broadcast_to_visitor(session_id, {
+                    "type": "human_agent_message",
+                    "content": content,
+                })
+                # 给当前 admin 自己也回执一下
+                await ws.send_json({"type": "sent", "content": content})
+
+            elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                break
+    finally:
+        listeners = _admin_listeners.get(session_id)
+        if listeners:
+            listeners.discard(ws)
+            if not listeners:
+                _admin_listeners.pop(session_id, None)
+
+    return ws
+
+
+async def _broadcast_to_visitor(session_id: str, data: dict) -> None:
+    """通过进程内共享字典把消息推送给访客 WebSocket。"""
+    try:
+        from api.routes.chat import _visitor_sessions
+    except Exception:
+        return
+    ws_set = _visitor_sessions.get(session_id)
+    if not ws_set:
+        return
+    dead: set = set()
+    for ws in ws_set:
+        try:
+            if not ws.closed:
+                await ws.send_json(data)
+        except Exception:
+            dead.add(ws)
+    ws_set -= dead
+
+
+async def notify_admin_listeners(session_id: str, data: dict) -> None:
+    """chat.py 在产生新消息时调用，推送给所有监听该会话的 admin ws。"""
+    ws_set = _admin_listeners.get(session_id)
+    if not ws_set:
+        return
+    dead: set = set()
+    for ws in ws_set:
+        try:
+            if not ws.closed:
+                await ws.send_json(data)
+        except Exception:
+            dead.add(ws)
+    ws_set -= dead
 
 
 def register(app: web.Application) -> None:

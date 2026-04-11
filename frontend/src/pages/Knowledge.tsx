@@ -16,6 +16,75 @@ interface Source {
   created_at: string
 }
 
+function UrlSubmitForm({
+  botId,
+  onSubmit,
+}: {
+  botId: string
+  onSubmit: () => void
+}) {
+  const [url, setUrl] = useState('')
+  const [name, setName] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async () => {
+    if (!url.trim()) {
+      setError('请输入 URL')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      await api.post(`/bots/${botId}/knowledge/url`, {
+        url: url.trim(),
+        name: name.trim() || url.trim(),
+      })
+      setUrl('')
+      setName('')
+      onSubmit()
+    } catch (e: any) {
+      setError(e.response?.data?.reason || '提交失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+      <p className="text-sm font-medium text-gray-700 mb-3">添加网页知识源</p>
+      <div className="space-y-2">
+        <input
+          className="input"
+          placeholder="https://example.com/product-page"
+          value={url}
+          onChange={(e) => {
+            setUrl(e.target.value)
+            setError('')
+          }}
+        />
+        <input
+          className="input"
+          placeholder="名称（选填，默认用 URL）"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        {error && <p className="text-red-500 text-xs">{error}</p>}
+        <button
+          className="btn-primary w-full"
+          onClick={submit}
+          disabled={loading || !botId}
+        >
+          {loading ? '提交中...' : '提交爬取'}
+        </button>
+      </div>
+      <p className="text-xs text-gray-400 mt-2">
+        Worker 启动后自动爬取，通常需要 30-60 秒
+      </p>
+    </div>
+  )
+}
+
 interface FAQ {
   id: string
   question: string
@@ -25,7 +94,7 @@ interface FAQ {
   created_at: string
 }
 
-type Tab = 'docs' | 'faq'
+type Tab = 'docs' | 'url' | 'faq'
 
 const STATUS_STYLE: Record<string, string> = {
   pending: 'bg-gray-100 text-gray-500',
@@ -186,19 +255,27 @@ export default function Knowledge() {
       </div>
 
       <div className="flex gap-1 mb-5 bg-gray-100 rounded-lg p-1 w-fit">
-        {(['docs', 'faq'] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              tab === t
-                ? 'bg-white text-gray-800 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t === 'docs' ? `文档 (${sources.length})` : `FAQ (${faqs.length})`}
-          </button>
-        ))}
+        {(['docs', 'url', 'faq'] as Tab[]).map((t) => {
+          const label =
+            t === 'docs'
+              ? `文档 (${sources.filter((s) => s.type !== 'url').length})`
+              : t === 'url'
+              ? `网页 (${sources.filter((s) => s.type === 'url').length})`
+              : `FAQ (${faqs.length})`
+          return (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                tab === t
+                  ? 'bg-white text-gray-800 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {label}
+            </button>
+          )
+        })}
       </div>
 
       {tab === 'docs' && (
@@ -224,43 +301,94 @@ export default function Knowledge() {
             </span>
           </div>
           <div className="space-y-2">
-            {sources.map((src) => (
-              <div
-                key={src.id}
-                className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex items-center gap-3"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">
-                    {src.name}
-                  </p>
-                  {src.error_msg && (
-                    <p className="text-xs text-red-400 mt-0.5">
-                      {src.error_msg}
+            {sources
+              .filter((s) => s.type !== 'url')
+              .map((src) => (
+                <div
+                  key={src.id}
+                  className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex items-center gap-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      {src.name}
                     </p>
-                  )}
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {new Date(src.created_at).toLocaleString('zh')}
-                    {src.chunk_count > 0 && ` · ${src.chunk_count} chunks`}
-                  </p>
+                    {src.error_msg && (
+                      <p className="text-xs text-red-400 mt-0.5">
+                        {src.error_msg}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(src.created_at).toLocaleString('zh')}
+                      {src.chunk_count > 0 && ` · ${src.chunk_count} chunks`}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full flex-shrink-0 ${
+                      STATUS_STYLE[src.status] || ''
+                    }`}
+                  >
+                    {STATUS_LABEL[src.status] || src.status}
+                  </span>
+                  <button
+                    className="text-xs text-red-400 hover:underline flex-shrink-0"
+                    onClick={() => delDoc(src.id)}
+                  >
+                    删除
+                  </button>
                 </div>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full flex-shrink-0 ${
-                    STATUS_STYLE[src.status] || ''
-                  }`}
-                >
-                  {STATUS_LABEL[src.status] || src.status}
-                </span>
-                <button
-                  className="text-xs text-red-400 hover:underline flex-shrink-0"
-                  onClick={() => delDoc(src.id)}
-                >
-                  删除
-                </button>
-              </div>
-            ))}
-            {sources.length === 0 && (
+              ))}
+            {sources.filter((s) => s.type !== 'url').length === 0 && (
               <p className="text-gray-400 text-sm py-8 text-center">
                 暂无文档，请上传
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === 'url' && (
+        <div>
+          <UrlSubmitForm botId={botId} onSubmit={loadDocs} />
+          <div className="space-y-2 mt-4">
+            {sources
+              .filter((s) => s.type === 'url')
+              .map((src) => (
+                <div
+                  key={src.id}
+                  className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex items-center gap-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      {src.name}
+                    </p>
+                    {src.error_msg && (
+                      <p className="text-xs text-red-400 mt-0.5">
+                        {src.error_msg}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(src.created_at).toLocaleString('zh')}
+                      {src.chunk_count > 0 && ` · ${src.chunk_count} chunks`}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full flex-shrink-0 ${
+                      STATUS_STYLE[src.status] || ''
+                    }`}
+                  >
+                    {STATUS_LABEL[src.status] || src.status}
+                  </span>
+                  <button
+                    className="text-xs text-red-400 hover:underline flex-shrink-0"
+                    onClick={() => delDoc(src.id)}
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            {sources.filter((s) => s.type === 'url').length === 0 && (
+              <p className="text-gray-400 text-sm py-8 text-center">
+                暂无网页，请提交 URL
               </p>
             )}
           </div>

@@ -12,6 +12,9 @@ from aiohttp import web
 logger = logging.getLogger(__name__)
 routes = web.RouteTableDef()
 
+# 全局注册：session_id -> set of visitor WS，admin.py broadcasts here.
+_visitor_sessions: dict[str, set[web.WebSocketResponse]] = {}
+
 
 @routes.get("/api/chat/{bot_id}")
 async def chat_ws(request: web.Request) -> web.WebSocketResponse:
@@ -47,6 +50,9 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
         db, incoming_session_id, tenant_id, key_bot_id, visitor_id, language
     )
     session_id = str(session["id"])
+
+    # 注册访客 WS（供 admin.py 向接管者广播）
+    _visitor_sessions.setdefault(session_id, set()).add(ws)
 
     await _send(ws, {
         "type": "connected",
@@ -120,6 +126,25 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
                 is_grounded=state.is_grounded,
                 latency_ms=state.total_latency_ms,
             )
+
+            # 实时推送给 admin 监听者（接管前也能看实时对话）
+            try:
+                from api.routes.admin import notify_admin_listeners
+                await notify_admin_listeners(session_id, {
+                    "type": "new_message",
+                    "role": "user",
+                    "content": user_content,
+                    "session_id": session_id,
+                })
+                await notify_admin_listeners(session_id, {
+                    "type": "new_message",
+                    "role": "assistant",
+                    "content": state.generated_answer,
+                    "grader_score": state.grader_score,
+                    "session_id": session_id,
+                })
+            except Exception as ae:
+                logger.warning(f"admin notify failed: {ae}")
 
             # 写回 session 缓存并累加配额计数
             if redis is not None:
@@ -241,6 +266,13 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
 
         elif msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSE):
             break
+
+    # 反注册访客 WS
+    listeners = _visitor_sessions.get(session_id)
+    if listeners:
+        listeners.discard(ws)
+        if not listeners:
+            _visitor_sessions.pop(session_id, None)
 
     logger.info(f"WebSocket closed: session={session_id}")
     return ws

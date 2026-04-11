@@ -90,14 +90,20 @@ async def jwt_middleware(request: web.Request, handler):
         return await handler(request)
 
     # ── 3. 标准 JWT 路由 ──────────────────────────────────
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise web.HTTPUnauthorized(
-            reason="Missing or invalid Authorization header",
-            content_type="application/json",
-        )
+    # Admin 实时监听 WS 允许 ?key= 查询参数携带 JWT
+    # （浏览器 WebSocket API 无法设置自定义 header）
+    token: str | None = None
+    if request.path.startswith("/api/admin/listen/"):
+        token = request.rel_url.query.get("key")
 
-    token = auth_header[7:]
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise web.HTTPUnauthorized(
+                reason="Missing or invalid Authorization header",
+                content_type="application/json",
+            )
+        token = auth_header[7:]
     try:
         from auth.jwt_utils import verify_access_token
         payload = verify_access_token(token)

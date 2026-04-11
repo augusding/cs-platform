@@ -23,7 +23,6 @@ async def _ingest(
 ) -> None:
     import asyncpg
 
-    from knowledge.parser import parse_file
     from knowledge.chunker import chunk_pages
     from knowledge.embedder import embed_texts
     from knowledge.vector_store import insert_chunks
@@ -44,11 +43,23 @@ async def _ingest(
             source_id,
         )
 
-        file_path = row["file_path"]
-        logger.info(f"Parsing {file_path}")
-        pages = parse_file(file_path)
+        source_type = row["type"]
+        if source_type == "url":
+            from knowledge.crawler import crawl_url
+            url = row["url"]
+            if not url:
+                raise ValueError("URL is empty")
+            logger.info(f"Crawling URL: {url}")
+            raw_text = await crawl_url(url)
+            pages = [raw_text] if raw_text else []
+        else:
+            from knowledge.parser import parse_file
+            file_path = row["file_path"]
+            logger.info(f"Parsing file: {file_path}")
+            pages = parse_file(file_path)
+
         if not pages:
-            raise ValueError("No content extracted from file")
+            raise ValueError("No content extracted")
 
         chunks = chunk_pages(pages)
         logger.info(f"Created {len(chunks)} chunks")

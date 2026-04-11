@@ -117,6 +117,68 @@ async def upload_knowledge(request: web.Request) -> web.Response:
     }, status=201)
 
 
+# ── POST /api/bots/{bot_id}/knowledge/url ───────────────
+@routes.post("/api/bots/{bot_id}/knowledge/url")
+async def submit_url(request: web.Request) -> web.Response:
+    _require_admin(request)
+    db = request.app["db"]
+    bot_id = request.match_info["bot_id"]
+    tenant_id = request["tenant_id"]
+
+    await _get_bot_or_403(db, bot_id, tenant_id)
+
+    data = await request.json()
+    url = (data.get("url") or "").strip()
+    name = (data.get("name") or url[:60]).strip()
+
+    if not url or not url.startswith(("http://", "https://")):
+        raise web.HTTPBadRequest(
+            reason="Valid URL (http/https) is required"
+        )
+
+    row = await execute_returning(
+        db,
+        """
+        INSERT INTO knowledge_sources
+            (tenant_id, bot_id, type, name, url, created_by)
+        VALUES ($1, $2, 'url', $3, $4, $5)
+        RETURNING id, status, created_at
+        """,
+        tenant_id, bot_id, name, url, request["user_id"],
+    )
+    source_id = str(row["id"])
+
+    job_id = None
+    try:
+        import redis as redis_lib
+        from rq import Queue as RQueue
+
+        from knowledge.ingestion import run_ingestion
+
+        r = redis_lib.from_url(settings.REDIS_URL)
+        q = RQueue("ingestion", connection=r)
+        job = q.enqueue(
+            run_ingestion,
+            source_id, bot_id, tenant_id, settings.DATABASE_URL,
+            job_timeout=300,
+        )
+        job_id = job.id
+    except Exception as e:
+        logger.warning(
+            f"RQ enqueue failed for URL ingestion: {e}"
+        )
+
+    return web.json_response({
+        "data": {
+            "id": source_id,
+            "status": "pending",
+            "job_id": job_id,
+            "url": url,
+            "name": name,
+        }
+    }, status=201)
+
+
 # ── GET /api/bots/{bot_id}/knowledge ────────────────────
 @routes.get("/api/bots/{bot_id}/knowledge")
 async def list_knowledge(request: web.Request) -> web.Response:

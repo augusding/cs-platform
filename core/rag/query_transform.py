@@ -53,32 +53,69 @@ async def _step_back(query: str, language: str) -> str:
     return resp.choices[0].message.content.strip()
 
 
-async def _expansion(query: str) -> str:
-    """扩展同义词和相关词"""
+async def _expansion(query: str, language: str) -> str:
+    """扩展同义词 / 行业术语 / 相关词"""
+    lang_hint = "中文" if language == "zh" else "English"
     prompt = (
-        f"请将以下问题扩展，加入同义词和相关术语，"
-        f"用空格分隔关键词（不要完整句子）：\n{query}"
+        f"将以下查询扩展为包含同义词和相关术语的搜索词组，{lang_hint}，"
+        f"词之间用空格分隔，不要写成句子：\n{query}"
     )
     client = _get_client()
     resp = await client.chat.completions.create(
         model=settings.QWEN_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=80,
+        max_tokens=100,
         temperature=0,
     )
     return resp.choices[0].message.content.strip()
 
 
+async def _decompose(query: str, language: str) -> list[str]:
+    """将复杂多跳问题拆成 2-3 个子查询"""
+    lang_hint = "中文" if language == "zh" else "in English"
+    prompt = (
+        f"将以下复杂问题拆分为 2-3 个独立的简单子问题，{lang_hint}，"
+        f"每行一个子问题，不要编号：\n{query}"
+    )
+    client = _get_client()
+    try:
+        resp = await client.chat.completions.create(
+            model=settings.QWEN_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0,
+        )
+        lines = [
+            line.strip()
+            for line in resp.choices[0].message.content.strip().split("\n")
+            if line.strip()
+        ]
+        return lines[:3] if lines else [query]
+    except Exception as e:
+        logger.warning(f"Decompose failed: {e}")
+        return [query]
+
+
 async def run(state: RAGState) -> RAGState:
     query = state.user_query
+    hint = state.transform_strategy  # Router 写入的策略提示
 
     try:
-        if state.attempts == 0:
-            transformed = await _hyde(query, state.language)
-            state.transform_strategy = "hyde"
-        else:
+        if state.attempts > 0:
+            # re-retrieve：升级到 Step-Back
             transformed = await _step_back(query, state.language)
             state.transform_strategy = "step_back"
+        elif hint == "expansion_hint":
+            transformed = await _expansion(query, state.language)
+            state.transform_strategy = "expansion"
+        elif hint == "decompose_hint":
+            sub_queries = await _decompose(query, state.language)
+            state.sub_queries = sub_queries
+            transformed = " ".join(sub_queries)
+            state.transform_strategy = "decompose"
+        else:
+            transformed = await _hyde(query, state.language)
+            state.transform_strategy = "hyde"
 
         state.transformed_query = transformed
         logger.debug(
