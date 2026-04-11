@@ -24,7 +24,7 @@ def _get_client() -> AsyncOpenAI:
 
 
 async def embed_texts(
-    texts: list[str], batch_size: int = 25
+    texts: list[str], batch_size: int = 10
 ) -> list[list[float]]:
     """批量生成 embedding，返回向量列表（顺序与输入一致）"""
     client = _get_client()

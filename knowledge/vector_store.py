@@ -14,7 +14,7 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-_EMBEDDING_DIM = 1536  # text-embedding-v3 维度
+_EMBEDDING_DIM = 1024  # text-embedding-v3 实际维度
 _connected = False
 
 
@@ -36,8 +36,24 @@ def _get_or_create_collection(bot_id: str) -> Collection:
     _connect()
     name = _collection_name(bot_id)
 
+    # 检测已有 collection 的向量维度是否匹配，不匹配则删除重建
     if utility.has_collection(name):
-        return Collection(name)
+        existing = Collection(name)
+        needs_rebuild = False
+        for field in existing.schema.fields:
+            if field.dtype == DataType.FLOAT_VECTOR:
+                current_dim = field.params.get("dim")
+                if current_dim != _EMBEDDING_DIM:
+                    logger.warning(
+                        f"Collection {name} dim mismatch "
+                        f"({current_dim} != {_EMBEDDING_DIM}), dropping and recreating"
+                    )
+                    needs_rebuild = True
+                break
+        if needs_rebuild:
+            utility.drop_collection(name)
+        else:
+            return existing
 
     fields = [
         FieldSchema("chunk_id",  DataType.VARCHAR, max_length=64, is_primary=True),
