@@ -10,9 +10,14 @@
   路由：api/routes/auth.py 已注册
 - Week 1 Day 5：test_auth.py 全链路验证（13 cases 全部通过）
   覆盖：注册/重复注册/登录/密码错误/刷新/旧token轮换/登出/邀请/接受邀请/无效token/租户隔离
+- Week 2 Day 1-2：bots/knowledge_sources/faq_items 三张表 + Bot CRUD API
+  迁移：a005/a006/a007 已应用
+  store：bot_store.py 完整 CRUD（create/list/get/update/delete/rotate_api_key/count）
+  路由：api/routes/bots.py 六端点（含 free plan 配额 402）
+  冒烟验证：CREATE→201 / LIST / GET / UPDATE / ROTATE / 配额限制 / DELETE 全部通过
 
 [进行中]
-- Week 2：Bot CRUD + 知识库摄取
+- Week 2 Day 3-5：知识库摄取（upload → parse → chunk → embed → Milvus）
 
 [待开始]
 - Week 3：RAG核心引擎 + Widget
