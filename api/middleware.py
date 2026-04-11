@@ -11,9 +11,12 @@ logger = logging.getLogger(__name__)
 # 不需要任何鉴权的路径
 PUBLIC_PATHS: set[str] = {
     "/health",
+    "/health/detail",
     "/api/auth/register",
     "/api/auth/login",
     "/api/auth/refresh",
+    "/api/auth/logout",
+    "/api/auth/invite/accept",
     "/widget.js",
 }
 

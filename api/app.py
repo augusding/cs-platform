@@ -10,7 +10,7 @@ from api.middleware import jwt_middleware
 
 # ─── 路由注册（按开发阶段解注释）────────────────────────
 from api.routes.health import register as reg_health
-# Week 1：from api.routes.auth import register as reg_auth
+from api.routes.auth import register as reg_auth
 # Week 2：from api.routes.bots import register as reg_bots
 # Week 2：from api.routes.knowledge import register as reg_knowledge
 # Week 3：from api.routes.chat import register as reg_chat
@@ -54,7 +54,7 @@ def create_app() -> web.Application:
 
     # ─── 注册路由 ──────────────────────────────────────────
     reg_health(app)
-    # reg_auth(app)       # Week 1 解注释
+    reg_auth(app)
     # reg_bots(app)       # Week 2 解注释
     # reg_knowledge(app)  # Week 2 解注释
     # reg_chat(app)       # Week 3 解注释
