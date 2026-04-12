@@ -46,9 +46,10 @@ async def run(state: RAGState) -> RAGState:
     all_chunks = faq_chunks + vector_chunks
     state.retrieved_chunks = all_chunks[:top_k]
 
+    top_score = state.retrieved_chunks[0]["score"] if state.retrieved_chunks else 0.0
     logger.info(
         f"[Retriever] returned {len(state.retrieved_chunks)} chunks, "
-        f"top_score={state.retrieved_chunks[0]['score']:.3f if state.retrieved_chunks else 0:.3f}"
+        f"top_score={top_score:.3f}"
     )
     for i, c in enumerate(state.retrieved_chunks[:3]):
         logger.debug(

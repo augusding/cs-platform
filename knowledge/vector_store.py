@@ -108,8 +108,7 @@ def search(
         return []
 
     col = Collection(name)
-    if not col.is_loaded:
-        col.load()
+    col.load()
 
     results = col.search(
         data=[query_vector],
