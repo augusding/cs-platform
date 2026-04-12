@@ -125,6 +125,19 @@ async def run_pipeline(
         return state
 
     if state.should_transfer:
+        state.generated_answer = (
+            "我来帮您转接人工客服，请稍候。"
+            if state.intent == Intent.TRANSFER_EXPLICIT
+            else "我注意到您可能需要更专业的帮助，建议转接人工客服，是否需要？"
+        ) if language == "zh" else (
+            "Let me transfer you to a human agent. Please hold on."
+            if state.intent == Intent.TRANSFER_EXPLICIT
+            else "I think you might need more specialized help. Shall I transfer you?"
+        )
+        state.is_grounded = True
+        state.hallucination_action = "pass"
+        if on_token:
+            await on_token(state.generated_answer)
         state.total_latency_ms = int((time.time() - start) * 1000)
         return state
 

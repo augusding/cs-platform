@@ -34,6 +34,9 @@ RULE_SIGNALS: list[tuple[str, list[str], float]] = [
     (Intent.URGENT,
      [r"(紧急|urgent|ASAP|马上|立刻|很重要|等不了|火急)"],
      0.82),
+    (Intent.CHITCHAT,
+     [r"(讲个故事|讲个笑话|说个笑话|给我讲|天气怎么样|你喜欢|你觉得好玩|聊聊天)"],
+     0.88),
     (Intent.ACKNOWLEDGMENT,
      [r"^[\s\W]*(好的|明白|收到|了解|知道了|OK|ok|嗯|好)[\s\W]*$"],
      0.90),
@@ -69,12 +72,20 @@ def _context_signals(state: RAGState) -> dict:
     if len(state.user_query.strip()) <= 6 and '?' not in state.user_query:
         signals["is_follow_up"] = True
 
-    neg_words = ['不', '没有', '错', '差', '又', '还是', '还没', '不行', '解决不了']
+    # 更严格的情绪升级检测：需要明确的负面表达
+    ESCALATION_PATTERNS = [
+        r'(说了好几遍|重复了好多次|一直没解决|还是不行|太差了|烂死了|垃圾系统|要投诉)',
+        r'(帮不了|解决不了|AI没用|机器人没用|你没用)',
+    ]
     recent = [m.get('content', '') for m in state.history[-4:]]
-    neg_count = sum(1 for msg in recent for w in neg_words if w in msg)
-    if neg_count >= 3:
+    escalation_count = sum(
+        1 for msg in recent
+        for pat in ESCALATION_PATTERNS
+        if re.search(pat, msg)
+    )
+    if escalation_count >= 2:
         signals["emotion_trend"] = "escalating"
-    elif neg_count >= 1:
+    elif escalation_count >= 1:
         signals["emotion_trend"] = "negative"
 
     return signals
