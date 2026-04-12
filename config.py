@@ -72,7 +72,7 @@ class Settings:
     SESSION_CACHE_TTL: int = int(os.getenv("SESSION_CACHE_TTL", "1800"))
 
     # ─── 知识库 ────────────────────────────────────────────
-    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "data/uploads")
+    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "data/uploads").replace("\\", "/")
     CHUNK_SIZE_ZH: int = int(os.getenv("CHUNK_SIZE_ZH", "400"))
     CHUNK_SIZE_EN: int = int(os.getenv("CHUNK_SIZE_EN", "300"))
     GRADER_THRESHOLD: float = float(os.getenv("GRADER_THRESHOLD", "0.6"))

@@ -68,7 +68,7 @@ async def _ingest(
             pages = [raw_text]
         else:
             from knowledge.parser import parse_file
-            file_path = row["file_path"]
+            file_path = row["file_path"].replace("\\", "/") if row.get("file_path") else None
             logger.info(f"Parsing file: {file_path}")
             pages = parse_file(file_path)
 

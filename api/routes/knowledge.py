@@ -54,9 +54,11 @@ async def upload_knowledge(request: web.Request) -> web.Response:
             reason=f"Unsupported file type. Allowed: {sorted(ALLOWED_EXTENSIONS)}"
         )
 
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    # 统一使用正斜杠，确保 Docker Worker（Linux）可以正确读取
+    upload_dir = settings.UPLOAD_DIR.replace("\\", "/")
+    os.makedirs(upload_dir, exist_ok=True)
     file_id = str(uuid.uuid4())
-    save_path = os.path.join(settings.UPLOAD_DIR, f"{file_id}{suffix}")
+    save_path = f"{upload_dir}/{file_id}{suffix}"
     total_size = 0
     with open(save_path, "wb") as f:
         while chunk := await field.read_chunk(8192):
