@@ -126,4 +126,9 @@ async def run(state: RAGState) -> RAGState:
         state.transformed_query = query
         state.transform_strategy = "passthrough"
 
+    state.trace("query_transform", {
+        "original": state.user_query[:80],
+        "transformed": state.transformed_query[:80],
+        "strategy": state.transform_strategy,
+    })
     return state

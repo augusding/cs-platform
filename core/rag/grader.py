@@ -36,6 +36,11 @@ async def run(state: RAGState) -> RAGState:
         f"Grader score: {state.grader_score:.3f} "
         f"(threshold={settings.GRADER_THRESHOLD}, attempts={state.attempts})"
     )
+    state.trace("grader", {
+        "score": state.grader_score,
+        "passed": state.grader_score >= settings.GRADER_THRESHOLD,
+        "attempts": state.attempts,
+    })
     return state
 
 

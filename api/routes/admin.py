@@ -493,6 +493,8 @@ async def debug_ws(request: web.Request) -> web.WebSocketResponse:
                         "should_transfer": state.should_transfer,
                         "chunks": chunk_summaries,
                         "tokens_used": state.tokens_used,
+                        "pipeline_trace": state.pipeline_trace,
+                        "transformed_query": state.transformed_query,
                     },
                 })
             except Exception as e:

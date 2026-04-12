@@ -37,6 +37,11 @@ async def run(state: RAGState) -> RAGState:
     if _is_simple(state.user_query):
         state.intent = "knowledge_qa"
         state.skip_retrieval = True
+        state.trace("router", {
+            "intent": state.intent,
+            "should_transfer": state.should_transfer,
+            "skip_retrieval": state.skip_retrieval,
+        })
         return state
 
     try:
@@ -78,4 +83,9 @@ async def run(state: RAGState) -> RAGState:
     elif any(k in query_lower for k in exact_keywords):
         state.transform_strategy = "expansion_hint"
 
+    state.trace("router", {
+        "intent": state.intent,
+        "should_transfer": state.should_transfer,
+        "skip_retrieval": state.skip_retrieval,
+    })
     return state

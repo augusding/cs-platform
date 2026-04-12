@@ -57,7 +57,19 @@ class RAGState:
     total_latency_ms: int = 0
     tokens_used: int = 0
 
+    # ─── Pipeline 执行链路追踪（调试用）──────────────────
+    pipeline_trace: list = field(default_factory=list)
+
     # ─── 运行时注入（不序列化，不缓存）──────────────────
     # asyncpg.Pool；由 chat.py 在调用 run_pipeline 时传入，
     # 使节点（如 retriever._search_faq）能直接查 DB，不再自建连接池。
     db_pool: object = None
+
+    def trace(self, node: str, data: dict):
+        """记录节点执行信息"""
+        import time
+        self.pipeline_trace.append({
+            "node": node,
+            "ts": round(time.time() * 1000),
+            **data,
+        })

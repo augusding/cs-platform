@@ -16,6 +16,8 @@ interface DebugInfo {
   hallucination: string; should_transfer: boolean
   chunks: { index: number; source: string; page: number; score: number; preview: string }[]
   tokens_used: number
+  pipeline_trace?: any[]
+  transformed_query?: string
 }
 
 interface ChatMsg {
@@ -446,6 +448,57 @@ export default function BotDetail() {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {lastDebug.pipeline_trace && lastDebug.pipeline_trace.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)',
+                                   letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                        节点执行链路
+                      </p>
+                      <div style={{ position: 'relative', paddingLeft: 20 }}>
+                        <div style={{ position: 'absolute', left: 7, top: 8, bottom: 8,
+                                      width: 1, background: 'var(--border)' }} />
+                        {lastDebug.pipeline_trace.map((t: any, i: number) => (
+                          <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 10, position: 'relative' }}>
+                            <div style={{
+                              width: 15, height: 15, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                              background: (t.node === 'grader' && !t.passed) || (t.node === 'retriever' && t.chunks_count === 0) ? '#FEF2F2' : '#ECFDF5',
+                              border: `2px solid ${(t.node === 'grader' && !t.passed) || (t.node === 'retriever' && t.chunks_count === 0) ? '#FCA5A5' : '#6EE7B7'}`,
+                            }} />
+                            <div style={{ flex: 1, background: '#F9FAFB', borderRadius: 6, padding: '6px 10px' }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 3 }}>
+                                {t.node}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#6B7280', lineHeight: 1.5 }}>
+                                {t.node === 'router' && `意图: ${t.intent}${t.skip_retrieval ? ' · 跳过检索' : ''}`}
+                                {t.node === 'query_transform' && (
+                                  <>
+                                    <div>策略: {t.strategy}</div>
+                                    {t.transformed !== t.original && <div style={{color:'#3B82F6'}}>转换: {t.transformed}</div>}
+                                  </>
+                                )}
+                                {t.node === 'retriever' && (
+                                  <span style={{ color: t.chunks_count === 0 ? '#DC2626' : '#059669', fontWeight: 500 }}>
+                                    命中 {t.chunks_count} 个 chunks
+                                    {t.chunks_count > 0 && ` · top ${typeof t.top_score === 'number' ? t.top_score.toFixed(3) : t.top_score}`}
+                                  </span>
+                                )}
+                                {t.node === 'grader' && `分数 ${typeof t.score === 'number' ? t.score.toFixed(3) : t.score} · 重试 ${t.attempts} 次`}
+                                {t.node === 'hallucination_checker' && `结果: ${t.action}`}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {lastDebug.transformed_query && (
+                    <div style={{ marginTop: 12, padding: '8px 12px', background: '#EFF6FF',
+                                  borderRadius: 6, fontSize: 11, color: '#1D4ED8' }}>
+                      <span style={{ fontWeight: 600 }}>转换后查询：</span>{lastDebug.transformed_query}
                     </div>
                   )}
                 </div>

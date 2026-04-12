@@ -34,15 +34,34 @@ async def run(state: RAGState) -> RAGState:
     query = state.transformed_query or state.user_query
     top_k = settings.RETRIEVAL_TOP_K
 
+    logger.info(
+        f"[Retriever] bot={state.bot_id[:8]} "
+        f"query='{query[:60]}' "
+        f"strategy={state.transform_strategy}"
+    )
+
     faq_chunks = await _search_faq(state)
     vector_chunks = await _search_vector(state, query, top_k)
 
     all_chunks = faq_chunks + vector_chunks
     state.retrieved_chunks = all_chunks[:top_k]
 
-    logger.debug(
-        f"Retrieved {len(faq_chunks)} faq + {len(vector_chunks)} vector chunks"
+    logger.info(
+        f"[Retriever] returned {len(state.retrieved_chunks)} chunks, "
+        f"top_score={state.retrieved_chunks[0]['score']:.3f if state.retrieved_chunks else 0:.3f}"
     )
+    for i, c in enumerate(state.retrieved_chunks[:3]):
+        logger.debug(
+            f"  chunk[{i}] score={c.get('score',0):.3f} "
+            f"source={c.get('source_id','')[:8]} "
+            f"content='{c.get('content','')[:50]}'"
+        )
+
+    state.trace("retriever", {
+        "chunks_count": len(state.retrieved_chunks),
+        "top_score": state.retrieved_chunks[0]["score"] if state.retrieved_chunks else 0,
+        "sources": list({c.get("source_id", "") for c in state.retrieved_chunks[:5]}),
+    })
     return state
 
 

@@ -22,12 +22,14 @@ async def run(state: RAGState) -> RAGState:
     if not state.retrieved_chunks:
         state.is_grounded = False
         state.hallucination_action = "clarify"
+        state.trace("hallucination_checker", {"action": state.hallucination_action, "is_grounded": state.is_grounded})
         return state
 
     fallback_phrases = ["转接人工", "human agent", "无法回答", "请稍后"]
     if any(p in state.generated_answer for p in fallback_phrases):
         state.is_grounded = True
         state.hallucination_action = "pass"
+        state.trace("hallucination_checker", {"action": state.hallucination_action, "is_grounded": state.is_grounded})
         return state
 
     context = "\n".join(
@@ -66,4 +68,5 @@ async def run(state: RAGState) -> RAGState:
 
     state.is_grounded = grounded
     state.hallucination_action = "pass" if grounded else "clarify"
+    state.trace("hallucination_checker", {"action": state.hallucination_action, "is_grounded": state.is_grounded})
     return state
