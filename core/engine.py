@@ -193,28 +193,39 @@ async def run_pipeline(
     # 并用 10s timeout 兜底，避免长期挂起
     state = await generator.run(state, on_token=on_token)
 
-    # ── 6. HallucinationChecker（后台 + timeout） ────────
-    checker_task = asyncio.create_task(hallucination_checker.run(state))
-    try:
-        state = await asyncio.wait_for(checker_task, timeout=10.0)
-    except asyncio.TimeoutError:
-        logger.warning(
-            f"[{state.session_id}] HallucinationChecker timeout, defaulting to pass"
-        )
-        state.is_grounded = True
-        state.hallucination_action = "pass"
-    logger.debug(
-        f"[{state.session_id}] Hallucination: "
-        f"grounded={state.is_grounded} action={state.hallucination_action}"
-    )
+    # ── 6. HallucinationChecker（后台异步，不阻塞 done 帧）────
+    # 乐观默认 pass，让用户立即收到回答
+    state.hallucination_action = "pass"
+    state.is_grounded = state.grader_score >= settings.GRADER_THRESHOLD
 
-    if state.hallucination_action == "clarify":
-        msg = _CLARIFY_ZH if language == "zh" else _CLARIFY_EN
-        state.generated_answer = msg
-        state.should_transfer = True
+    checker_task = asyncio.create_task(hallucination_checker.run(state))
+
+    async def _run_checker():
+        try:
+            checked = await asyncio.wait_for(checker_task, timeout=8.0)
+            # Checker 结果写回 state（对本次 done 帧无影响，供 DB/日志参考）
+            logger.debug(
+                f"[{state.session_id}] Hallucination (async): "
+                f"grounded={checked.is_grounded} action={checked.hallucination_action}"
+            )
+            if checked.hallucination_action != "pass":
+                logger.warning(
+                    f"[{state.session_id}] Hallucination check failed: "
+                    f"action={checked.hallucination_action}"
+                )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"[{state.session_id}] HallucinationChecker timeout (8s)"
+            )
+        except Exception as e:
+            logger.warning(
+                f"[{state.session_id}] HallucinationChecker error: {e}"
+            )
+
+    asyncio.create_task(_run_checker())
 
     # ── 7. PostProcess 输出安全过滤 ──────────────────────
-    if state.generated_answer and state.hallucination_action == "pass":
+    if state.generated_answer:
         try:
             from core.rag.post_process import run as post_run
             post_result = await post_run(state.generated_answer)
