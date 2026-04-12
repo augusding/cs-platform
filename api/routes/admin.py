@@ -495,6 +495,8 @@ async def debug_ws(request: web.Request) -> web.WebSocketResponse:
                         "tokens_used": state.tokens_used,
                         "pipeline_trace": state.pipeline_trace,
                         "transformed_query": state.transformed_query,
+                        "intent_confidence": state.intent_confidence,
+                        "intent_reason": state.intent_reason,
                     },
                 })
             except Exception as e:

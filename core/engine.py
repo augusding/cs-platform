@@ -10,6 +10,7 @@ import uuid
 
 from config import settings
 from core.rag.state import RAGState
+from core.rag.intent import Intent
 from core.rag import (
     router,
     query_transform,
@@ -80,6 +81,7 @@ async def run_pipeline(
     if pending_lead:
         state.intent = "lead_capture"
         state.lead_info = pending_lead
+        state.lead_in_progress = True
     else:
         # ── 语义缓存检查 ─────────────────────────────────────
         cached = await _check_semantic_cache(state)
@@ -97,7 +99,8 @@ async def run_pipeline(
         state = await router.run(state)
         logger.debug(f"[{state.session_id}] Router: intent={state.intent}")
 
-    if state.intent == "out_of_scope":
+    # ── 路由分支（基于 Intent 层级）───────────────────────
+    if state.intent == Intent.OUT_OF_SCOPE:
         msg = _OUT_OF_SCOPE_ZH if language == "zh" else _OUT_OF_SCOPE_EN
         state.generated_answer = msg
         state.is_grounded = True
@@ -107,12 +110,25 @@ async def run_pipeline(
         state.total_latency_ms = int((time.time() - start) * 1000)
         return state
 
-    if state.intent == "transfer":
-        state.should_transfer = True
+    if state.intent == Intent.CLARIFICATION:
+        msg = (
+            "请您说得更具体一些，我好为您准确解答。"
+            if language == "zh"
+            else "Could you provide more details so I can help you better?"
+        )
+        state.generated_answer = msg
+        state.is_grounded = True
+        state.hallucination_action = "pass"
+        if on_token:
+            await on_token(msg)
         state.total_latency_ms = int((time.time() - start) * 1000)
         return state
 
-    if state.intent == "lead_capture":
+    if state.should_transfer:
+        state.total_latency_ms = int((time.time() - start) * 1000)
+        return state
+
+    if state.intent in Intent.L3_LEAD or state.intent == "lead_capture":
         from core.rag.lead_collector import (
             extract_info,
             get_next_missing_field,
@@ -122,7 +138,6 @@ async def run_pipeline(
 
         lead_info = dict(state.lead_info or {})
 
-        # 把本次用户输入写入下一个缺失字段
         next_missing = get_next_missing_field(lead_info)
         if next_missing:
             extracted = await extract_info(
@@ -168,6 +183,9 @@ async def run_pipeline(
         state.total_latency_ms = int((time.time() - start) * 1000)
         return state
 
+    # 低置信度标记（中置信度区间回答末尾加确认语）
+    add_confirmation = 0.60 <= state.intent_confidence < 0.75
+
     # ── 2-4. QueryTransform → Retriever → Grader（含 re-retrieve 循环）
     while True:
         state = await query_transform.run(state)
@@ -189,9 +207,18 @@ async def run_pipeline(
         )
 
     # ── 5. Generator（流式）─────────────────────────────
-    # Generator 流式输出优先保证用户体验；Checker 在流结束后异步触发
-    # 并用 10s timeout 兜底，避免长期挂起
     state = await generator.run(state, on_token=on_token)
+
+    # 低置信度确认语
+    if add_confirmation and state.generated_answer:
+        suffix = (
+            "\n\n（如果理解有误，请告诉我更多细节）"
+            if language == "zh"
+            else "\n\n(If I misunderstood, please provide more details.)"
+        )
+        state.generated_answer += suffix
+        if on_token:
+            await on_token(suffix)
 
     # ── 6. HallucinationChecker（后台异步，不阻塞 done 帧）────
     # 乐观默认 pass，让用户立即收到回答

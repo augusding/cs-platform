@@ -18,6 +18,8 @@ interface DebugInfo {
   tokens_used: number
   pipeline_trace?: any[]
   transformed_query?: string
+  intent_confidence?: number
+  intent_reason?: string
 }
 
 interface ChatMsg {
@@ -34,10 +36,38 @@ const STYLE_OPTIONS = [
   { value: 'professional', label: '简洁高效' },
 ]
 const INTENT_COLOR: Record<string, string> = {
-  knowledge_qa:  'bg-blue-50 text-blue-600',
-  lead_capture:  'bg-amber-50 text-amber-600',
-  out_of_scope:  'bg-gray-100 text-gray-500',
-  transfer:      'bg-red-50 text-red-500',
+  // L1
+  greeting:       'bg-green-50 text-green-600',
+  farewell:       'bg-green-50 text-green-600',
+  acknowledgment: 'bg-green-50 text-green-600',
+  bot_identity:   'bg-purple-50 text-purple-600',
+  capability:     'bg-purple-50 text-purple-600',
+  chitchat:       'bg-gray-100 text-gray-500',
+  // L2
+  product_info:   'bg-blue-50 text-blue-600',
+  price_inquiry:  'bg-blue-50 text-blue-600',
+  availability:   'bg-blue-50 text-blue-600',
+  how_to_use:     'bg-blue-50 text-blue-600',
+  policy_query:   'bg-blue-50 text-blue-600',
+  comparison:     'bg-blue-50 text-blue-600',
+  // L3
+  purchase_intent:'bg-amber-50 text-amber-600',
+  bulk_inquiry:   'bg-amber-50 text-amber-600',
+  custom_request: 'bg-amber-50 text-amber-600',
+  lead_capture:   'bg-amber-50 text-amber-600',
+  // L4
+  complaint:          'bg-red-50 text-red-500',
+  urgent:             'bg-red-50 text-red-500',
+  transfer_explicit:  'bg-red-50 text-red-500',
+  transfer_implicit:  'bg-red-50 text-red-500',
+  // L5
+  clarification:  'bg-yellow-50 text-yellow-600',
+  follow_up:      'bg-gray-100 text-gray-500',
+  multi_intent:   'bg-indigo-50 text-indigo-600',
+  out_of_scope:   'bg-gray-100 text-gray-500',
+  // legacy compat
+  knowledge_qa:   'bg-blue-50 text-blue-600',
+  transfer:       'bg-red-50 text-red-500',
 }
 const DEBUG_TABS = ['对话测试', 'RAG 详情', '历史记录'] as const
 type DebugTab = typeof DEBUG_TABS[number]
@@ -337,6 +367,14 @@ export default function BotDetail() {
                               <span className={`px-1.5 py-0.5 rounded text-xs ${INTENT_COLOR[m.debug.intent] || 'bg-gray-100 text-gray-500'}`}>
                                 {m.debug.intent}
                               </span>
+                              {m.debug.intent_confidence != null && (
+                                <span className="text-xs text-gray-400">
+                                  {(m.debug.intent_confidence * 100).toFixed(0)}%
+                                </span>
+                              )}
+                              {m.debug.intent_reason && (
+                                <span className="text-xs text-gray-300 cursor-help" title={m.debug.intent_reason}>i</span>
+                              )}
                               {m.cache_hit && (
                                 <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 text-xs">缓存命中</span>
                               )}

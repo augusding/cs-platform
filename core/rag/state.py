@@ -52,6 +52,11 @@ class RAGState:
     # {"product_requirement": ..., "quantity": ..., "contact": ...}
     should_transfer: bool = False
 
+    # ─── 意图识别详情 ──────────────────────────────────────
+    intent_confidence: float = 0.0
+    intent_reason: str = ""
+    lead_in_progress: bool = False
+
     # ─── 调试信息（不影响主流程）──────────────────────────
     cache_hit: bool = False
     total_latency_ms: int = 0
