@@ -119,7 +119,7 @@ export default function BotDetail() {
 
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host  = window.location.hostname
-    const port  = '8081'
+    const port  = window.location.port === '3001' ? '8081' : window.location.port
     const ws = new WebSocket(`${proto}://${host}:${port}/api/admin/debug/${botId}?token=${token}`)
     wsRef.current = ws
 
