@@ -73,7 +73,13 @@ def _context_signals(state: RAGState) -> dict:
     if not state.history:
         return signals
 
-    if len(state.user_query.strip()) <= 6 and '?' not in state.user_query:
+    query = state.user_query.strip()
+    is_short = len(query) <= 10
+    has_follow_marker = bool(re.search(
+        r'^(那|还有|呢|也|另外|what about|how about|and |also )', query, re.IGNORECASE
+    ))
+    ends_with_ne = query.endswith('呢') or query.endswith('呢？')
+    if (is_short or has_follow_marker or ends_with_ne) and state.history:
         signals["is_follow_up"] = True
 
     # 更严格的情绪升级检测：需要明确的负面表达
@@ -93,6 +99,65 @@ def _context_signals(state: RAGState) -> dict:
         signals["emotion_trend"] = "negative"
 
     return signals
+
+
+async def _rewrite_follow_up(state: RAGState) -> str | None:
+    """
+    将追问改写为完整的独立查询。
+    "那运动款呢" + 上文 "StarPods Pro 多少钱" → "StarPods Sport 运动款的价格是多少"
+    """
+    from config import settings
+
+    recent = state.history[-4:]
+    history_text = "\n".join(
+        f"{'用户' if m['role'] == 'user' else 'AI'}: {m.get('content', '')[:100]}"
+        for m in recent
+    )
+
+    prompt = f"""将用户的追问改写为一个完整的、独立的查询语句，使其不依赖上下文也能被理解。
+
+对话历史：
+{history_text}
+
+用户追问：{state.user_query}
+
+要求：
+1. 只输出改写后的查询，不要解释
+2. 保持用户原始语言（中文追问输出中文，英文追问输出英文）
+3. 如果追问本身已经是完整查询，原样输出
+4. 改写后的查询应该简洁（一句话）"""
+
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(
+            api_key=settings.QWEN_API_KEY,
+            base_url=settings.QWEN_BASE_URL,
+        )
+        resp = await client.chat.completions.create(
+            model=settings.QWEN_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=80,
+            temperature=0,
+        )
+        rewritten = resp.choices[0].message.content.strip()
+        # 去掉可能的引号包裹（中英文）
+        for q in ('"', "'", "\u201c", "\u201d", "\u2018", "\u2019"):
+            rewritten = rewritten.strip(q)
+        rewritten = rewritten.strip()
+        if rewritten and len(rewritten) >= 2:
+            logger.info(
+                f"[Router] follow_up rewrite: '{state.user_query}' → '{rewritten}'"
+            )
+            return rewritten
+    except Exception as e:
+        logger.warning(f"[Router] follow_up rewrite failed: {e}")
+
+    last_user = next(
+        (m['content'] for m in reversed(state.history) if m['role'] == 'user'), ""
+    )
+    if last_user:
+        return f"{last_user} {state.user_query}".strip()
+    return None
 
 
 _LLM_INTENT_LIST = """
@@ -239,12 +304,12 @@ async def _run_inner(state: RAGState, ctx) -> RAGState:
         state.trace("router", {"intent": state.intent, "confidence": 0.85, "source": "context_emotion"})
         return state
 
-    # 追问：注入上文
+    # 追问：LLM 改写为完整独立查询
     if context["is_follow_up"] and state.history:
-        last_user = next((m['content'] for m in reversed(state.history) if m['role'] == 'user'), "")
-        if last_user:
-            state.user_query = f"{last_user} {state.user_query}".strip()
-            state.transform_strategy = "follow_up"
+        rewritten = await _rewrite_follow_up(state)
+        if rewritten:
+            state.user_query = rewritten
+            state.transform_strategy = "follow_up_rewrite"
 
     # 规则高置信度短路：跳过 LLM 调用，节省 ~2s
     if rule_intent and rule_conf >= 0.92:

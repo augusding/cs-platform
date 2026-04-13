@@ -37,6 +37,28 @@ def _build_context(chunks: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
+_ASSISTANT_MAX_LEN = 150
+
+
+def _trim_history(history: list[dict]) -> list[dict]:
+    """
+    智能截断对话历史：
+    - user 消息：保留全文
+    - assistant 消息：截断到 150 字符
+    传递"对话脉络"而非"完整历史回答"，节省 token + 降低干扰。
+    """
+    trimmed = []
+    for msg in history:
+        if msg.get("role") == "assistant":
+            content = msg.get("content", "")
+            if len(content) > _ASSISTANT_MAX_LEN:
+                content = content[:_ASSISTANT_MAX_LEN].rstrip() + "…"
+            trimmed.append({"role": "assistant", "content": content})
+        else:
+            trimmed.append(msg)
+    return trimmed
+
+
 def _get_client(use_fallback: bool = False) -> AsyncOpenAI:
     if use_fallback and settings.DEEPSEEK_API_KEY:
         return AsyncOpenAI(
@@ -57,9 +79,12 @@ async def run(state: RAGState, on_token=None, ctx=None) -> RAGState:
     system = _ZH_SYSTEM if state.language == "zh" else _EN_SYSTEM
     context = _build_context(state.retrieved_chunks)
 
+    # 对 history 做智能截断：assistant 消息截断到 150 字，user 消息保留全文
+    trimmed_history = _trim_history(state.history[-6:])
+
     messages = [
         {"role": "system", "content": system},
-        *state.history[-6:],
+        *trimmed_history,
         {
             "role": "user",
             "content": f"参考资料：\n{context}\n\n用户问题：{state.user_query}",

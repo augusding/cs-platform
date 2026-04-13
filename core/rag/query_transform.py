@@ -147,6 +147,13 @@ async def _run_inner(state: RAGState) -> RAGState:
     query = state.user_query
     hint = state.transform_strategy  # Router 写入的策略提示
 
+    # follow_up_rewrite 已在 Router 中用 LLM 改写过，直接使用
+    if hint == "follow_up_rewrite":
+        state.transformed_query = query
+        state.transform_strategy = "follow_up_rewrite"
+        logger.debug("QueryTransform [follow_up_rewrite]: using rewritten query")
+        return state
+
     # 短查询首轮检索跳过 HyDE（节省 ~3s），直接用原始查询
     # re-retrieve 时仍走完整变换策略
     if len(query) <= 15 and state.attempts == 0 and hint not in ("expansion_hint", "decompose_hint"):
