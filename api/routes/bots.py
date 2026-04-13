@@ -100,8 +100,14 @@ async def create_bot_handler(request: web.Request) -> web.Response:
     db = request.app["db"]
     tenant_id = request["tenant_id"]
 
-    plan = request.get("plan", "free")
-    max_bots = PLAN_BOT_LIMITS.get(plan, 1)
+    # 从 DB 实时读取 plan + max_bots（JWT 中的 plan 可能过期）
+    t_row = await db.fetchrow(
+        "SELECT plan, max_bots FROM tenants WHERE id = $1", tenant_id
+    )
+    if not t_row:
+        raise web.HTTPForbidden(reason="Tenant not found")
+    plan = t_row["plan"] or "free"
+    max_bots = int(t_row["max_bots"] or PLAN_BOT_LIMITS.get(plan, 1))
     current = await bot_store.count_bots(db, tenant_id)
     if current >= max_bots:
         raise web.HTTPPaymentRequired(
