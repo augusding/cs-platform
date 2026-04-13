@@ -253,6 +253,7 @@ async def run_pipeline(
         if not grader.should_retry(state):
             break
 
+        state.prev_grader_score = state.grader_score
         state.attempts += 1
         logger.info(
             f"[{state.session_id}] Re-retrieve #{state.attempts} "

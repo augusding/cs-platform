@@ -51,22 +51,35 @@ def _grade(state: RAGState, span=None):
 
     state.grader_score = sum(scores) / len(scores) if scores else 0.0
 
+    # 根据分数来源选择自适应阈值
+    # cosine score 天然偏低（0.4-0.6），LLM relevance 更严格（0-1 真实相关度）
+    is_reranked = any(
+        c.get("relevance") is not None
+        and c.get("cosine_score") is not None
+        and c.get("relevance") != c.get("cosine_score")
+        for c in top_chunks
+    )
+    if is_reranked:
+        effective_threshold = settings.GRADER_THRESHOLD
+    else:
+        effective_threshold = max(settings.GRADER_THRESHOLD - 0.15, 0.30)
+
+    state._effective_threshold = effective_threshold
+
     logger.debug(
         f"Grader score: {state.grader_score:.3f} "
-        f"(threshold={settings.GRADER_THRESHOLD}, attempts={state.attempts}) "
+        f"(threshold={effective_threshold:.2f}, attempts={state.attempts}) "
         f"individual=[{', '.join(f'{s:.2f}' for s in scores)}]"
     )
 
     if span:
         span.attributes["score"] = round(state.grader_score, 3)
         span.attributes["threshold"] = settings.GRADER_THRESHOLD
-        span.attributes["passed"] = state.grader_score >= settings.GRADER_THRESHOLD
+        span.attributes["effective_threshold"] = effective_threshold
+        span.attributes["passed"] = state.grader_score >= effective_threshold
         span.attributes["attempts"] = state.attempts
         span.attributes["individual_scores"] = [round(s, 3) for s in scores]
-        span.attributes["score_source"] = (
-            "relevance" if state.retrieved_chunks[0].get("relevance") is not None
-            else "cosine"
-        )
+        span.attributes["score_source"] = "relevance_reranked" if is_reranked else "cosine"
 
 
 def should_retry(state: RAGState) -> bool:
@@ -83,7 +96,19 @@ def should_retry(state: RAGState) -> bool:
             )
             return False
 
+    # re-retrieve 分数改善 < 0.05，不再重试
+    if state.attempts > 0 and state.prev_grader_score > 0:
+        improvement = state.grader_score - state.prev_grader_score
+        if improvement < 0.05:
+            logger.info(
+                f"Grader: re-retrieve didn't improve "
+                f"({state.prev_grader_score:.3f} -> {state.grader_score:.3f}), stopping retry"
+            )
+            return False
+
+    # 使用自适应阈值
+    threshold = getattr(state, '_effective_threshold', settings.GRADER_THRESHOLD)
     return (
-        state.grader_score < settings.GRADER_THRESHOLD
+        state.grader_score < threshold
         and state.attempts < _MAX_ATTEMPTS
     )

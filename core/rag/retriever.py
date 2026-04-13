@@ -106,17 +106,52 @@ async def run(state: RAGState, ctx=None) -> RAGState:
     else:
         faq_chunks = await _search_faq(state)
 
-    # ── 2. 向量搜索（扩大初始检索量到 top_k * 2）──
-    vector_top = top_k * 2
-    if ctx and hasattr(ctx, 'span'):
-        async with ctx.span("retriever", "vector_search") as _vs:
-            vector_chunks = await _search_vector(state, query, vector_top)
-            _vs.attributes["count"] = len(vector_chunks)
-            _vs.attributes["top_score"] = (
-                vector_chunks[0]["score"] if vector_chunks else 0
-            )
+    # ── 2. 向量搜索 ──
+    if state.sub_queries and len(state.sub_queries) >= 2:
+        # Comparison / decompose：对每个子查询并行检索，合并去重
+        import asyncio as _aio
+        vector_top_per = top_k
+
+        async def _parallel_search():
+            tasks = [
+                _search_vector(state, sq, vector_top_per)
+                for sq in state.sub_queries[:3]
+            ]
+            results = await _aio.gather(*tasks)
+            seen_ids = set()
+            merged_vec = []
+            for chunk_list in results:
+                for c in chunk_list:
+                    cid = c.get("chunk_id", "")
+                    if cid and cid in seen_ids:
+                        continue
+                    if cid:
+                        seen_ids.add(cid)
+                    merged_vec.append(c)
+            return merged_vec
+
+        if ctx and hasattr(ctx, 'span'):
+            async with ctx.span("retriever", "vector_search_parallel") as _vs:
+                vector_chunks = await _parallel_search()
+                _vs.attributes["sub_queries"] = len(state.sub_queries)
+                _vs.attributes["count"] = len(vector_chunks)
+                _vs.attributes["top_score"] = (
+                    vector_chunks[0]["score"] if vector_chunks else 0
+                )
+        else:
+            vector_chunks = await _parallel_search()
     else:
-        vector_chunks = await _search_vector(state, query, vector_top)
+        # 常规单查询检索
+        vector_top = top_k * 2
+        if ctx and hasattr(ctx, 'span'):
+            async with ctx.span("retriever", "vector_search") as _vs:
+                vector_chunks = await _search_vector(state, query, vector_top)
+                _vs.attributes["count"] = len(vector_chunks)
+                _vs.attributes["top_score"] = (
+                    vector_chunks[0]["score"] if vector_chunks else 0
+                )
+        else:
+            vector_chunks = await _search_vector(state, query, vector_top)
 
     # ── 3. BM25 评分 ──
     if ctx and hasattr(ctx, 'span'):
@@ -135,7 +170,7 @@ async def run(state: RAGState, ctx=None) -> RAGState:
     use_rerank = (
         len(state.user_query) > 15  # 短查询跳过
         and state.attempts > 0      # 首次检索不精排，re-retrieve 时才精排
-    ) or state.intent == "comparison"  # 对比查询总是精排
+    )  # comparison 不再强制精排，BM25 + RRF 已足够
 
     if use_rerank:
         try:

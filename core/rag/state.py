@@ -37,6 +37,7 @@ class RAGState:
 
     # ─── Grader 输出 ───────────────────────────────────────
     grader_score: float = 0.0    # 0.0 – 1.0
+    prev_grader_score: float = 0.0  # 上一轮 grader 分数，用于判断 re-retrieve 是否有改善
     attempts: int = 0            # re-retrieve 次数，最多 2
 
     # ─── Generator 输出 ────────────────────────────────────

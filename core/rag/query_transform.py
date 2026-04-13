@@ -70,6 +70,40 @@ async def _expansion(query: str, language: str) -> str:
     return resp.choices[0].message.content.strip()
 
 
+def _extract_comparison_entities(query: str) -> list[str]:
+    """
+    从对比查询中提取两个实体名称（纯规则，不调 LLM）。
+    "SP-100 和 SL-200 有什么区别" → ["SP-100", "SL-200"]
+    "StarPods Pro和Lite哪个好" → ["StarPods Pro", "Lite"]
+    """
+    import re as _re
+
+    # 模式 1：型号匹配（SP-100、SL-200、SW-500 等）
+    models = _re.findall(r'[A-Z]{1,5}[\-]?\d{2,5}[A-Za-z]*', query)
+    if len(models) >= 2:
+        return [models[0], models[1]]
+
+    # 模式 2：中文"和/与/跟/还是" 或英文 vs/compared to 分割
+    parts = _re.split(
+        r'[和与跟]|还是|vs\.?|versus|compared?\s+to',
+        query,
+        flags=_re.IGNORECASE,
+    )
+    if len(parts) >= 2:
+        cleaned = []
+        for p in parts:
+            p = _re.sub(
+                r'(有什么区别|哪个好|差异|不同|区别|对比|比较|what|difference|which|better).*$',
+                '', p, flags=_re.IGNORECASE,
+            ).strip()
+            if p and len(p) >= 2:
+                cleaned.append(p)
+        if len(cleaned) >= 2:
+            return cleaned[:2]
+
+    return [query]
+
+
 async def _decompose(query: str, language: str) -> list[str]:
     """将复杂多跳问题拆成 2-3 个子查询"""
     lang_hint = "中文" if language == "zh" else "in English"
@@ -129,6 +163,12 @@ async def _run_inner(state: RAGState) -> RAGState:
         elif hint == "expansion_hint":
             transformed = await _expansion(query, state.language)
             state.transform_strategy = "expansion"
+        elif hint == "decompose_hint" and state.intent == "comparison":
+            # Comparison 快速路径：规则提取实体名，不调 LLM
+            sub = _extract_comparison_entities(query)
+            state.sub_queries = sub
+            transformed = " ".join(sub)
+            state.transform_strategy = "comparison_split"
         elif hint == "decompose_hint":
             sub_queries = await _decompose(query, state.language)
             state.sub_queries = sub_queries
