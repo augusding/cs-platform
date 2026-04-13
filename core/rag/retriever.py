@@ -142,10 +142,11 @@ async def _search_faq(state: RAGState) -> list[dict]:
 
         chunks: list[dict] = []
         for row in rows:
+            # FAQ 提权 +0.15（上限 1.0），确保始终压过向量检索结果
+            base = 0.95 + (row["priority"] or 0) * 0.001
             chunks.append({
                 "content": f"问：{row['question']}\n答：{row['answer']}",
-                # FAQ 优先级最高，+ priority 微调避免同分
-                "score": 0.95 + (row["priority"] or 0) * 0.001,
+                "score": min(base + 0.15, 1.0),
                 "chunk_id": f"faq_{row['question'][:20]}",
                 "source_id": "faq",
                 "page": 0,

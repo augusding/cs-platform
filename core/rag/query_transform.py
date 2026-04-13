@@ -113,6 +113,14 @@ async def _run_inner(state: RAGState) -> RAGState:
     query = state.user_query
     hint = state.transform_strategy  # Router 写入的策略提示
 
+    # 短查询首轮检索跳过 HyDE（节省 ~3s），直接用原始查询
+    # re-retrieve 时仍走完整变换策略
+    if len(query) <= 15 and state.attempts == 0 and hint not in ("expansion_hint", "decompose_hint"):
+        state.transformed_query = query
+        state.transform_strategy = "passthrough"
+        logger.debug(f"QueryTransform [passthrough]: short query, skipped HyDE")
+        return state
+
     try:
         if state.attempts > 0:
             # re-retrieve：升级到 Step-Back

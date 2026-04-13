@@ -14,8 +14,12 @@ logger = logging.getLogger(__name__)
 RULE_SIGNALS: list[tuple[str, list[str], float]] = [
     # (intent, patterns, confidence)
     (Intent.TRANSFER_EXPLICIT,
-     [r"(人工|转客服|找真人|不要AI|转接客服|real human|live agent)"],
+     [r"(转人工|转客服|找真人|不要AI|转接客服|要人工客服|real human|live agent)",
+      r"(?<!是)(?<!是不是)人工(?!还是|智能|的)"],
      0.98),
+    (Intent.BOT_IDENTITY,
+     [r"(是人工|是机器人|是AI|是真人|是不是人|你是谁|who are you|are you a bot|are you real|are you human)"],
+     0.92),
     (Intent.GREETING,
      [r"^[\s\W]*(你好|hi|hello|早上好|下午好|晚上好|嗨|hey|哈喽|在吗)[\s\W]*$"],
      0.95),
@@ -104,16 +108,16 @@ availability   - 库存/发货（有没有货/几天发货/现货）
 how_to_use     - 使用方法（怎么用/如何安装/使用步骤）
 policy_query   - 政策咨询（退换货/保修/售后规定）
 comparison     - 对比比较（A和B哪个好/区别/对比）
-purchase_intent - 购买意向（想买/要下单/有采购需求）
-bulk_inquiry   - 批量采购（批量/大量/代理商/MOQ）
-custom_request - 定制需求（定制/OEM/改色/打logo）
+purchase_intent - 明确表达采购意向的消息，必须包含意向动词（想买/要下单/需要采购/want to order/looking to purchase）。仅询问价格或信息不算
+bulk_inquiry   - 明确表达批量采购意向（我要批量采购/想大量订购/need to order in bulk）。仅询问MOQ或批量价格属于 price_inquiry 而非 bulk_inquiry
+custom_request - 明确表达定制需求并有合作意向（我需要定制/要OEM合作）。仅询问是否支持定制属于 product_info 而非 custom_request
 complaint      - 投诉不满（太差/质量问题/投诉/不满意）
 urgent         - 紧急需求（紧急/马上/ASAP/等不了）
 transfer_explicit - 明确要求人工（要人工/转客服/找真人）
 transfer_implicit - 隐式转接（AI解决不了/说了好几遍/越来越不满）
 clarification  - 问题太模糊需要反问（指代不清/无法理解）
 follow_up      - 追问上文（那价格呢/还有吗/继续）
-multi_intent   - 一句话多个问题（价格多少，能定制吗，几天发货）
+multi_intent   - 一句话包含多个【不同主题】的独立问题（如"价格多少钱、能定制吗"涉及价格+定制两个主题）。同一主题的补充细节（如"多少钱？批量价呢？"都是问价格）不算 multi_intent，应归为主要意图
 out_of_scope   - 完全无关（写代码/天气预报/股票/算命）
 """
 
@@ -152,7 +156,7 @@ async def _llm_classify(state: RAGState, context: dict, ctx=None) -> tuple[str, 
 1. 输出 JSON 格式，包含 intent/confidence/reason 三个字段
 2. confidence 为 0-1 的浮点数
 3. reason 简短说明分类依据（中文，20字以内）
-4. 如果包含多个独立问题，intent 填 multi_intent，sub_intents 填子意图列表
+4. 只有包含不同主题的独立问题时才填 multi_intent。同一主题的追问补充（如"多少钱？批量呢？"都是价格）应归为主要意图（如 price_inquiry），不填 multi_intent
 5. 只输出 JSON，不要其他内容
 
 示例输出：
@@ -241,6 +245,31 @@ async def _run_inner(state: RAGState, ctx) -> RAGState:
         if last_user:
             state.user_query = f"{last_user} {state.user_query}".strip()
             state.transform_strategy = "follow_up"
+
+    # 规则高置信度短路：跳过 LLM 调用，节省 ~2s
+    if rule_intent and rule_conf >= 0.92:
+        state.intent = rule_intent
+        state.intent_confidence = round(rule_conf, 3)
+        state.intent_reason = f"规则直接命中 ({rule_conf})"
+        state.skip_retrieval = rule_intent in Intent.L1_NO_RETRIEVAL or rule_intent in {
+            Intent.TRANSFER_EXPLICIT, Intent.TRANSFER_IMPLICIT, Intent.CLARIFICATION,
+        }
+        state.should_transfer = rule_intent in {Intent.TRANSFER_EXPLICIT, Intent.TRANSFER_IMPLICIT}
+
+        if rule_intent in {Intent.PRICE_INQUIRY, Intent.AVAILABILITY}:
+            state.transform_strategy = "expansion_hint"
+        elif rule_intent == Intent.COMPARISON:
+            state.transform_strategy = "decompose_hint"
+
+        logger.info(
+            f"[Router] SHORTCIRCUIT intent={rule_intent} conf={rule_conf:.2f} "
+            f"source=rule_shortcircuit"
+        )
+        state.trace("router", {
+            "intent": rule_intent, "confidence": rule_conf,
+            "source": "rule_shortcircuit", "skip_retrieval": state.skip_retrieval,
+        })
+        return state
 
     # Step 3: LLM 分类
     llm_intent, llm_conf, llm_reason = await _llm_classify(state, context, ctx=ctx)
