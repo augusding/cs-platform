@@ -14,7 +14,7 @@ from store.base import fetch_one, fetch_all, execute_returning, execute
 logger = logging.getLogger(__name__)
 routes = web.RouteTableDef()
 
-ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".docx", ".doc"}
+ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".docx", ".doc", ".txt", ".csv"}
 ADMIN_ROLES = {"super_admin", "admin"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 

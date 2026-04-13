@@ -324,13 +324,13 @@ export default function Knowledge() {
                 ref={fileRef}
                 type="file"
                 className="hidden"
-                accept=".pdf,.xlsx,.xls,.docx,.doc"
+                accept=".pdf,.xlsx,.xls,.docx,.doc,.txt,.csv"
                 onChange={upload}
                 disabled={!botId || uploading}
               />
             </label>
             <span className="text-xs text-gray-400">
-              PDF / Excel / Word，最大 20MB
+              PDF / Excel / Word / TXT / CSV，最大 20MB
             </span>
             {isPolling && (
               <span className="text-xs text-blue-400 animate-pulse ml-2">

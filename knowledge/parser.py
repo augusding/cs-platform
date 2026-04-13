@@ -49,6 +49,39 @@ def parse_word(file_path: str) -> list[str]:
     return paragraphs
 
 
+def parse_text(file_path: str) -> list[str]:
+    """纯文本文件 → 全文作为单页。尝试 utf-8，失败回退 gbk。"""
+    for encoding in ("utf-8", "gbk", "latin-1"):
+        try:
+            with open(file_path, "r", encoding=encoding) as f:
+                content = f.read().strip()
+            if content:
+                return [content]
+            return []
+        except UnicodeDecodeError:
+            continue
+    return []
+
+
+def parse_csv(file_path: str) -> list[str]:
+    """CSV → 每行转为 'col1 | col2 | col3' 文本"""
+    import csv
+    rows: list[str] = []
+    for encoding in ("utf-8", "gbk", "latin-1"):
+        try:
+            with open(file_path, "r", encoding=encoding, newline="") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    cells = [str(c).strip() for c in row]
+                    if any(cells):
+                        rows.append(" | ".join(cells))
+            break
+        except UnicodeDecodeError:
+            rows = []
+            continue
+    return ["\n".join(rows)] if rows else []
+
+
 def parse_file(file_path: str) -> list[str]:
     """根据扩展名自动选择解析器"""
     suffix = Path(file_path).suffix.lower()
@@ -58,4 +91,8 @@ def parse_file(file_path: str) -> list[str]:
         return parse_excel(file_path)
     if suffix in (".docx", ".doc"):
         return parse_word(file_path)
+    if suffix == ".txt":
+        return parse_text(file_path)
+    if suffix == ".csv":
+        return parse_csv(file_path)
     raise ValueError(f"Unsupported file type: {suffix}")
