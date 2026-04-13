@@ -33,8 +33,8 @@ interface ChatMsg {
 
 const STYLE_OPTIONS = [
   { value: 'friendly',     label: '友好亲切' },
-  { value: 'formal',       label: '正式专业' },
   { value: 'professional', label: '简洁高效' },
+  { value: 'humanized',    label: '拟人对话' },
 ]
 const INTENT_COLOR: Record<string, string> = {
   // L1
@@ -279,6 +279,21 @@ export default function BotDetail() {
                   </select>
                 </div>
               </div>
+              {form.style === 'humanized' && (
+                <p className="text-xs text-amber-600 mt-1">
+                  拟人模式：AI 会用口语化风格回答，不使用列表格式，主动追问客户，体验最接近真人客服
+                </p>
+              )}
+              {form.style === 'professional' && (
+                <p className="text-xs text-gray-400 mt-1">
+                  信息密度高，结构化输出，适合 B2B 采购场景
+                </p>
+              )}
+              {(!form.style || form.style === 'friendly') && (
+                <p className="text-xs text-gray-400 mt-1">
+                  友好热情，适当使用语气词，平衡信息完整度和亲和力
+                </p>
+              )}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">自定义系统提示词（可选）</label>
                 <textarea className="input resize-none" rows={3}

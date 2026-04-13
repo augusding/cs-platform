@@ -17,6 +17,7 @@ class RAGState:
     # ─── 输入（只读）──────────────────────────────────────
     user_query: str
     language: str = "zh"    # "zh" | "en"
+    style: str = "friendly"  # "professional" | "friendly" | "humanized"
     history: list[dict] = field(default_factory=list)
     # [{"role": "user"|"assistant", "content": "..."}]
 

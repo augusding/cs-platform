@@ -96,6 +96,18 @@ async def run_pipeline(
     )
     state.db_pool = db_pool
 
+    # 加载 Bot 配置的对话风格
+    try:
+        if db_pool:
+            from store.base import fetch_one
+            bot_row = await fetch_one(
+                db_pool, "SELECT style FROM bots WHERE id = $1", bot_id
+            )
+            if bot_row and bot_row.get("style"):
+                state.style = bot_row["style"]
+    except Exception:
+        pass
+
     # ── 中途 lead_capture 检测：有挂起的 lead 状态则跳过缓存 + Router ──
     pending_lead = await _load_lead_state(state.session_id)
     if pending_lead:
@@ -236,6 +248,15 @@ async def run_pipeline(
         except Exception:
             pass
 
+        style_hint_zh = {
+            "humanized": "\n5. 用口语化的方式回答，像朋友聊天一样，不要太正式",
+            "professional": "\n5. 保持简洁高效，直接给出关键信息",
+        }.get(state.style, "")
+        style_hint_en = {
+            "humanized": "\n5. Respond casually like a real person chatting, not formal",
+            "professional": "\n5. Be concise and give the key info directly",
+        }.get(state.style, "")
+
         if state.language == "en":
             l1_system = (
                 f"You are \"{bot_name}\", a professional AI customer service assistant.\n"
@@ -243,6 +264,7 @@ async def run_pipeline(
                 "customization, shipping, after-sales.\n"
                 "You can collect purchasing needs (product, quantity, budget, contact).\n"
                 "Rules: respond naturally, be friendly and professional, keep it concise."
+                + style_hint_en
             )
         else:
             l1_system = (
@@ -250,6 +272,7 @@ async def run_pipeline(
                 "你的能力包括：产品咨询、报价、起订量、交货期、付款方式、定制服务、物流运输、售后政策等。\n"
                 "你可以收集客户的采购需求（产品、数量、预算、联系方式）。\n"
                 "回答规则：根据用户问题自然回答，保持友好专业，回答简洁。"
+                + style_hint_zh
             )
 
         state = await generator.run(
