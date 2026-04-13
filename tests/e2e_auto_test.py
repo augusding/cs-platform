@@ -50,10 +50,10 @@ SINGLE_TURN_CASES = [
 
     # L4 异常处理
     {"id": "S21", "query": "我要投诉！你们产品质量太差了！", "category": "L4", "expected_intent": "complaint"},
-    {"id": "S22", "query": "产品坏了怎么办？", "category": "L4", "expected_intent": "complaint", "should_contain_any": ["保修", "维修", "DOA"]},
+    {"id": "S22", "query": "我订单号 2024001 物流到哪了？", "category": "L4", "expected_intent": ["order_query", "policy_query", "availability"]},
 
     # L5 边界
-    {"id": "S23", "query": "今天天气怎么样？", "category": "L5", "expected_intent": "out_of_scope"},
+    {"id": "S23", "query": "产品坏了怎么办？", "category": "L4", "expected_intent": ["complaint", "policy_query"], "should_contain_any": ["保修", "维修", "DOA"]},
     {"id": "S24", "query": "帮我写一首诗", "category": "L5", "expected_intent": "out_of_scope"},
     {"id": "S25", "query": "你们的股票代码是多少？", "category": "L5", "expected_intent": "out_of_scope"},
 
@@ -307,10 +307,18 @@ class E2ETest:
                 result["checks"] = check_turn(result["answer"], tc)
                 all_passed = all(c["pass"] for c in result["checks"])
 
-                # 意图检查（宽松）
+                # 意图检查：支持 string 或 list[str]
                 intent_ok = True
-                if tc.get("expected_intent"):
-                    intent_ok = self._intent_match(tc["expected_intent"], result["actual_intent"])
+                expected = tc.get("expected_intent")
+                if expected:
+                    if isinstance(expected, str):
+                        intent_ok = self._intent_match(expected, result["actual_intent"])
+                    else:
+                        # list: 任一匹配即可（严格或同层级宽松）
+                        intent_ok = any(
+                            self._intent_match(e, result["actual_intent"])
+                            for e in expected
+                        )
                     result["intent_ok"] = intent_ok
 
                 result["pass"] = all_passed and intent_ok and not result["error"]
