@@ -25,6 +25,7 @@ from api.routes.billing import register as reg_billing
 from api.routes.members import register as reg_members
 from api.routes.traces import register as reg_traces
 from api.routes.demo import register as reg_demo
+from api.routes.gaps import register as reg_gaps
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ def create_app() -> web.Application:
     reg_members(app)
     reg_traces(app)
     reg_demo(app)
+    reg_gaps(app)
 
     # ─── 生命周期钩子 ──────────────────────────────────────
     app.on_startup.append(_on_startup)

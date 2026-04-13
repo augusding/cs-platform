@@ -30,6 +30,7 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [bots, setBots]       = useState<Bot[]>([])
   const [period, setPeriod]   = useState('month')
+  const [gapSummary, setGapSummary] = useState<any>(null)
 
   useEffect(() => {
     api.get(`/admin/stats?period=${period}`)
@@ -40,6 +41,7 @@ export default function Dashboard() {
     api.get('/admin/no-hit-queries').then(r => setNoHit(r.data.data)).catch(() => {})
     api.get('/admin/sessions').then(r => setSessions(r.data.data || [])).catch(() => {})
     api.get('/bots').then(r => setBots(r.data.data || [])).catch(() => {})
+    api.get('/admin/gaps/summary').then(r => setGapSummary(r.data)).catch(() => {})
   }, [])
 
   const METRICS = [
@@ -71,6 +73,42 @@ export default function Dashboard() {
 
   return (
     <div>
+      {/* Knowledge gaps alert */}
+      {gapSummary && gapSummary.summary?.open_count > 0 && (
+        <div style={{
+          background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10,
+          padding: '16px 20px', marginBottom: 20,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#92400E', marginBottom: 4 }}>
+                {gapSummary.summary.open_count} knowledge gaps detected
+              </div>
+              <div style={{ fontSize: 12, color: '#A16207' }}>
+                {gapSummary.summary.total_affected_queries} customer queries couldn't be answered properly.
+                Add content to improve AI accuracy.
+              </div>
+              {gapSummary.top_gaps?.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {gapSummary.top_gaps.map((g: any) => (
+                    <span key={g.id} style={{
+                      fontSize: 11, padding: '3px 10px', borderRadius: 6,
+                      background: '#FEF3C7', color: '#92400E',
+                    }}>
+                      {g.cluster_label} ({g.query_count})
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="btn-primary" style={{ fontSize: 12, flexShrink: 0 }}
+              onClick={() => navigate('/gaps')}>
+              View gaps
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Period selector */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 2, background: '#F3F4F6', borderRadius: 8, padding: 3 }}>

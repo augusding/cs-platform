@@ -15,6 +15,7 @@ import Login        from './pages/Login'
 import Demo         from './pages/Demo'
 import DemoChat     from './pages/DemoChat'
 import Landing      from './pages/Landing'
+import KnowledgeGaps from './pages/KnowledgeGaps'
 
 function Icon({ d, size = 18 }: { d: string; size?: number }) {
   return (
@@ -47,6 +48,7 @@ const NAV_SECTIONS = [
       { to: '/billing', label: '套餐管理', icon: 'M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z' },
       { to: '/audit',   label: '操作审计', icon: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z' },
       { to: '/traces',  label: 'Pipeline 追踪', icon: 'M3 3v18h18v-2H5V3H3zm16 10l-4-4-4 4-4-4-1.41 1.41L9 13.59l4-4 4 4 4-4V17h2V9z' },
+      { to: '/gaps',    label: '知识盲区',     icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z' },
     ],
   },
 ]
@@ -208,6 +210,7 @@ function Shell() {
         <Route path="/billing" element={<Layout title="套餐管理"><Billing /></Layout>} />
         <Route path="/audit" element={<Layout title="操作审计"><AuditLog /></Layout>} />
         <Route path="/traces" element={<Layout title="Pipeline 追踪"><Traces /></Layout>} />
+        <Route path="/gaps" element={<Layout title="知识盲区"><KnowledgeGaps /></Layout>} />
         <Route path="/profile" element={<Layout title="个人设置"><Profile /></Layout>} />
       </Routes>
     </div>
