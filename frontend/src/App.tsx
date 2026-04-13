@@ -12,6 +12,8 @@ import AuditLog     from './pages/AuditLog'
 import Traces       from './pages/Traces'
 import Profile      from './pages/Profile'
 import Login        from './pages/Login'
+import Demo         from './pages/Demo'
+import DemoChat     from './pages/DemoChat'
 
 function Icon({ d, size = 18 }: { d: string; size?: number }) {
   return (
@@ -216,6 +218,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/demo" element={<Demo />} />
+        <Route path="/demo/:botId" element={<DemoChat />} />
         <Route path="/*" element={<PrivateRoute><Shell /></PrivateRoute>} />
       </Routes>
     </BrowserRouter>

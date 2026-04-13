@@ -74,6 +74,7 @@ async def update_bot(
         "name", "welcome_message", "language", "style",
         "system_prompt", "avatar_url",
         "lead_capture_fields", "private_domain_config",
+        "is_demo",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:

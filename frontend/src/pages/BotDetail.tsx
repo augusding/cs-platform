@@ -6,6 +6,7 @@ interface BotConfig {
   id: string; name: string; welcome_message: string; language: string
   style: string; system_prompt: string; avatar_url: string
   private_domain_config: any
+  is_demo?: boolean
   stats?: { chunk_total: number; faq_count: number }
 }
 
@@ -81,6 +82,7 @@ export default function BotDetail() {
   const [saved, setSaved]   = useState(false)
   const [error, setError]   = useState('')
   const [pdEnabled, setPdEnabled] = useState(false)
+  const [isDemo, setIsDemo] = useState(false)
   const [embedCode, setEmbedCode] = useState('')
   const [showEmbed, setShowEmbed] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -108,6 +110,7 @@ export default function BotDetail() {
         private_domain_config: b.private_domain_config || {},
       })
       setPdEnabled(!!(b.private_domain_config?.enabled))
+      setIsDemo(!!b.is_demo)
     })
   }, [botId])
 
@@ -198,6 +201,7 @@ export default function BotDetail() {
       payload.private_domain_config = pdEnabled
         ? { ...(form.private_domain_config || {}), enabled: true }
         : null
+      payload.is_demo = isDemo
       await api.put(`/bots/${botId}`, payload)
       setSaved(true); setTimeout(() => setSaved(false), 2000)
     } catch (e: any) {
@@ -308,6 +312,17 @@ export default function BotDetail() {
                 </div>
               </div>
             )}
+
+            <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-100">
+              <div>
+                <div className="text-sm font-medium text-gray-700">公开为 Demo</div>
+                <div className="text-xs text-gray-400 mt-0.5">开启后此 Bot 将出现在 Demo 体验页供访客试用</div>
+              </div>
+              <div className={`w-10 h-5 rounded-full cursor-pointer relative transition-colors ${isDemo ? 'bg-blue-500' : 'bg-gray-200'}`}
+                onClick={() => setIsDemo(!isDemo)}>
+                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isDemo ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </div>
+            </div>
           </div>
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
