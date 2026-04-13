@@ -225,6 +225,45 @@ async def run_pipeline(
         state.pipeline_trace = [s.to_dict() for s in ctx.spans]
         return state
 
+    # ── L1 对话层：用专属 prompt（不走 RAG prompt，避免误转人工）──
+    if state.intent in Intent.L1_NO_RETRIEVAL and state.skip_retrieval:
+        bot_name = "智能客服助手"
+        try:
+            from store.base import fetch_one
+            row = await fetch_one(db_pool, "SELECT name FROM bots WHERE id = $1", bot_id)
+            if row:
+                bot_name = row["name"]
+        except Exception:
+            pass
+
+        if state.language == "en":
+            l1_system = (
+                f"You are \"{bot_name}\", a professional AI customer service assistant.\n"
+                "You can help with: product info, pricing, MOQ, delivery, payment, "
+                "customization, shipping, after-sales.\n"
+                "You can collect purchasing needs (product, quantity, budget, contact).\n"
+                "Rules: respond naturally, be friendly and professional, keep it concise."
+            )
+        else:
+            l1_system = (
+                f"你是「{bot_name}」，一个专业的AI智能客服助手。\n"
+                "你的能力包括：产品咨询、报价、起订量、交货期、付款方式、定制服务、物流运输、售后政策等。\n"
+                "你可以收集客户的采购需求（产品、数量、预算、联系方式）。\n"
+                "回答规则：根据用户问题自然回答，保持友好专业，回答简洁。"
+            )
+
+        state = await generator.run(
+            state, on_token=on_token, ctx=ctx, system_override=l1_system
+        )
+        state.is_grounded = True
+        state.hallucination_action = "pass"
+        await _write_semantic_cache(state)
+        state.total_latency_ms = int((time.time() - start) * 1000)
+        ctx.exit_branch = "l1_direct"
+        asyncio.create_task(_persist_trace_safe(ctx, state))
+        state.pipeline_trace = [s.to_dict() for s in ctx.spans]
+        return state
+
     if state.skip_retrieval:
         state = await generator.run(state, on_token=on_token, ctx=ctx)
         state.is_grounded = True

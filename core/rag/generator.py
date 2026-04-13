@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 _ZH_SYSTEM = """你是一个专业的智能客服助手。请根据以下参考资料回答用户问题。
 规则：
 1. 只基于参考资料回答，不要编造信息
-2. 如果参考资料不足以回答，直接说"这个问题我需要为您转接人工确认"
+2. 只有在参考资料完全无关且无法提供任何有用信息时，才说"抱歉，这个问题我暂时无法解答，建议联系我们的客服团队"
 3. 回答简洁专业，中文回答
 4. 不要提及"参考资料"这个词"""
 
@@ -71,23 +71,29 @@ def _get_client(use_fallback: bool = False) -> AsyncOpenAI:
     )
 
 
-async def run(state: RAGState, on_token=None, ctx=None) -> RAGState:
+async def run(state: RAGState, on_token=None, ctx=None, system_override: str = "") -> RAGState:
     if ctx is None:
         from core.observability import NullTraceContext
         ctx = NullTraceContext()
 
-    system = _ZH_SYSTEM if state.language == "zh" else _EN_SYSTEM
+    system = system_override or (_ZH_SYSTEM if state.language == "zh" else _EN_SYSTEM)
     context = _build_context(state.retrieved_chunks)
 
     # 对 history 做智能截断：assistant 消息截断到 150 字，user 消息保留全文
     trimmed_history = _trim_history(state.history[-6:])
+
+    # L1 等无检索场景：不带"参考资料"前缀，避免 LLM 误以为有上下文要遵守
+    if system_override and not state.retrieved_chunks:
+        user_msg = state.user_query
+    else:
+        user_msg = f"参考资料：\n{context}\n\n用户问题：{state.user_query}"
 
     messages = [
         {"role": "system", "content": system},
         *trimmed_history,
         {
             "role": "user",
-            "content": f"参考资料：\n{context}\n\n用户问题：{state.user_query}",
+            "content": user_msg,
         },
     ]
 
