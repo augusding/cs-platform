@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import api from '../api/client'
 
 const S = {
   page: { fontFamily: "'Inter', -apple-system, 'Segoe UI', sans-serif", color: '#0F172A', overflowX: 'hidden' as const },
@@ -71,6 +72,14 @@ function CompareRow({ feature, us, them }: { feature: string; us: string; them: 
 export default function Landing() {
   const navigate = useNavigate()
   const navRef = useRef<HTMLElement>(null)
+  const [demoBot, setDemoBot] = useState<any>(null)
+
+  useEffect(() => {
+    api.get('/demo/bots').then(r => {
+      const bots = r.data?.data || []
+      if (bots.length > 0) setDemoBot(bots[0])
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -144,15 +153,15 @@ export default function Landing() {
 
           <div style={{ display: 'flex', gap: 14, justifyContent: 'center', marginBottom: 60 }}>
             <button style={{ ...S.btnPrimary, padding: '14px 32px', fontSize: 16 }}
-              onClick={() => navigate('/demo')}
+              onClick={() => navigate('/register')}
               onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 8px 30px rgba(37,99,235,.3)' }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
-            >Try live demo</button>
+            >Start free</button>
             <button style={{ ...S.btnOutline, padding: '14px 32px', fontSize: 16 }}
-              onClick={() => navigate('/register')}
+              onClick={() => navigate('/demo')}
               onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,.08)'}
               onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = 'transparent'}
-            >Start free</button>
+            >See all demos</button>
           </div>
 
           <div style={{
@@ -165,6 +174,58 @@ export default function Landing() {
             <StatCard num="24/7" label="Always on" />
             <StatCard num="0" label="Hallucinations" />
           </div>
+
+          {/* Inline demo chat preview */}
+          {demoBot && (
+            <div style={{
+              maxWidth: 480, margin: '40px auto 0',
+              background: 'rgba(255,255,255,.06)', borderRadius: 16,
+              border: '1px solid rgba(255,255,255,.1)', overflow: 'hidden',
+              backdropFilter: 'blur(8px)',
+            }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,.06)',
+                             display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: '#2563EB',
+                               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff">
+                    <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+                  </svg>
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 500, color: '#fff' }}>{demoBot.name}</span>
+                <span style={{ fontSize: 10, color: '#10B981', display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                  <span style={{ width: 5, height: 5, borderRadius: 3, background: '#10B981', display: 'inline-block' }}/>
+                  Online
+                </span>
+              </div>
+              <div style={{ padding: '16px 20px' }}>
+                <div style={{ background: 'rgba(255,255,255,.08)', borderRadius: '4px 12px 12px 12px',
+                               padding: '10px 14px', fontSize: 13, color: 'rgba(255,255,255,.8)', lineHeight: 1.6,
+                               marginBottom: 12, maxWidth: '85%', textAlign: 'left' }}>
+                  {demoBot.welcome_message || 'Hello! How can I help you today?'}
+                </div>
+              </div>
+              <div style={{ padding: '0 20px 16px' }}
+                onClick={() => navigate(`/demo/${demoBot.id}`)}
+              >
+                <div style={{
+                  display: 'flex', gap: 8, alignItems: 'center',
+                  background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)',
+                  borderRadius: 24, padding: '10px 18px', cursor: 'pointer',
+                  transition: 'background .15s',
+                }}
+                  onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,.1)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,.06)'}
+                >
+                  <span style={{ flex: 1, fontSize: 13, color: 'rgba(255,255,255,.35)', textAlign: 'left' }}>
+                    Try asking: "What products do you have?"
+                  </span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#2563EB">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
