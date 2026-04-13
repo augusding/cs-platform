@@ -14,6 +14,7 @@ import Profile      from './pages/Profile'
 import Login        from './pages/Login'
 import Demo         from './pages/Demo'
 import DemoChat     from './pages/DemoChat'
+import Landing      from './pages/Landing'
 
 function Icon({ d, size = 18 }: { d: string; size?: number }) {
   return (
@@ -217,7 +218,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/home" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Login />} />
         <Route path="/demo" element={<Demo />} />
         <Route path="/demo/:botId" element={<DemoChat />} />
         <Route path="/*" element={<PrivateRoute><Shell /></PrivateRoute>} />
