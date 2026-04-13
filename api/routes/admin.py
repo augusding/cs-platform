@@ -450,6 +450,15 @@ async def debug_ws(request: web.Request) -> web.WebSocketResponse:
 
             try:
                 from core.engine import run_pipeline
+                from core.observability import TraceContext
+                ctx = TraceContext(
+                    bot_id=bot_id,
+                    tenant_id=tenant_id,
+                    session_id=session_id,
+                    channel="debug",
+                    user_query=content,
+                    language=bot.get("language", "zh"),
+                )
                 state = await run_pipeline(
                     user_query=content,
                     bot_id=bot_id,
@@ -459,6 +468,7 @@ async def debug_ws(request: web.Request) -> web.WebSocketResponse:
                     history=history[-6:],
                     on_token=on_token,
                     db_pool=db,
+                    ctx=ctx,
                 )
 
                 history.append({
@@ -497,6 +507,7 @@ async def debug_ws(request: web.Request) -> web.WebSocketResponse:
                         "transformed_query": state.transformed_query,
                         "intent_confidence": state.intent_confidence,
                         "intent_reason": state.intent_reason,
+                        "trace": ctx.to_debug_dict(),
                     },
                 })
             except Exception as e:

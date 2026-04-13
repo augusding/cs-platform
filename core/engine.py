@@ -58,14 +58,34 @@ async def run_pipeline(
     history: list[dict] | None = None,
     on_token=None,
     db_pool=None,
+    ctx=None,
 ) -> RAGState:
     """
     执行完整 RAG pipeline，返回最终 RAGState。
     on_token: 流式输出回调，每个 token 调用一次。
     db_pool:  asyncpg.Pool，注入后节点可直接查 DB（retriever FAQ 等）。
+    ctx:      TraceContext，可观测性追踪上下文（None 时自动创建）
     """
     start = time.time()
     user_query = sanitize_input(user_query)
+
+    from core.observability import TraceContext
+    if ctx is None:
+        ctx = TraceContext(
+            bot_id=bot_id,
+            tenant_id=tenant_id,
+            session_id=session_id or "",
+            user_query=user_query,
+            language=language,
+        )
+    else:
+        # 外部传入的 ctx 补齐字段（channel 由调用方设置）
+        ctx.bot_id = bot_id
+        ctx.tenant_id = tenant_id
+        ctx.session_id = session_id or ""
+        ctx.user_query = user_query
+        ctx.language = language
+
     state = RAGState(
         session_id=session_id or str(uuid.uuid4()),
         bot_id=bot_id,
@@ -84,7 +104,9 @@ async def run_pipeline(
         state.lead_in_progress = True
     else:
         # ── 语义缓存检查 ─────────────────────────────────────
-        cached = await _check_semantic_cache(state)
+        async with ctx.span("cache_check") as _cs:
+            cached = await _check_semantic_cache(state)
+            _cs.attributes["hit"] = cached is not None
         if cached:
             state.generated_answer = cached
             state.is_grounded = True
@@ -93,10 +115,13 @@ async def run_pipeline(
             if on_token:
                 await on_token(cached)
             state.total_latency_ms = int((time.time() - start) * 1000)
+            ctx.exit_branch = "cache_hit"
+            asyncio.create_task(_persist_trace_safe(ctx, state))
+            state.pipeline_trace = [s.to_dict() for s in ctx.spans]
             return state
 
         # ── 1. Router ──────────────────────────────────────
-        state = await router.run(state)
+        state = await router.run(state, ctx=ctx)
         logger.debug(f"[{state.session_id}] Router: intent={state.intent}")
 
     # ── 路由分支（基于 Intent 层级）───────────────────────
@@ -108,6 +133,9 @@ async def run_pipeline(
         if on_token:
             await on_token(msg)
         state.total_latency_ms = int((time.time() - start) * 1000)
+        ctx.exit_branch = "out_of_scope"
+        asyncio.create_task(_persist_trace_safe(ctx, state))
+        state.pipeline_trace = [s.to_dict() for s in ctx.spans]
         return state
 
     if state.intent == Intent.CLARIFICATION:
@@ -122,6 +150,9 @@ async def run_pipeline(
         if on_token:
             await on_token(msg)
         state.total_latency_ms = int((time.time() - start) * 1000)
+        ctx.exit_branch = "clarification"
+        asyncio.create_task(_persist_trace_safe(ctx, state))
+        state.pipeline_trace = [s.to_dict() for s in ctx.spans]
         return state
 
     if state.should_transfer:
@@ -139,6 +170,9 @@ async def run_pipeline(
         if on_token:
             await on_token(state.generated_answer)
         state.total_latency_ms = int((time.time() - start) * 1000)
+        ctx.exit_branch = "transfer"
+        asyncio.create_task(_persist_trace_safe(ctx, state))
+        state.pipeline_trace = [s.to_dict() for s in ctx.spans]
         return state
 
     if state.intent in Intent.L3_LEAD or state.intent == "lead_capture":
@@ -186,14 +220,20 @@ async def run_pipeline(
                 await on_token(complete_msg)
 
         state.total_latency_ms = int((time.time() - start) * 1000)
+        ctx.exit_branch = "lead_capture"
+        asyncio.create_task(_persist_trace_safe(ctx, state))
+        state.pipeline_trace = [s.to_dict() for s in ctx.spans]
         return state
 
     if state.skip_retrieval:
-        state = await generator.run(state, on_token=on_token)
+        state = await generator.run(state, on_token=on_token, ctx=ctx)
         state.is_grounded = True
         state.hallucination_action = "pass"
         await _write_semantic_cache(state)
         state.total_latency_ms = int((time.time() - start) * 1000)
+        ctx.exit_branch = "skip_retrieval"
+        asyncio.create_task(_persist_trace_safe(ctx, state))
+        state.pipeline_trace = [s.to_dict() for s in ctx.spans]
         return state
 
     # 低置信度标记（中置信度区间回答末尾加确认语）
@@ -201,9 +241,9 @@ async def run_pipeline(
 
     # ── 2-4. QueryTransform → Retriever → Grader（含 re-retrieve 循环）
     while True:
-        state = await query_transform.run(state)
-        state = await retriever.run(state)
-        state = await grader.run(state)
+        state = await query_transform.run(state, ctx=ctx)
+        state = await retriever.run(state, ctx=ctx)
+        state = await grader.run(state, ctx=ctx)
 
         logger.debug(
             f"[{state.session_id}] Grader: score={state.grader_score:.3f} "
@@ -220,7 +260,7 @@ async def run_pipeline(
         )
 
     # ── 5. Generator（流式）─────────────────────────────
-    state = await generator.run(state, on_token=on_token)
+    state = await generator.run(state, on_token=on_token, ctx=ctx)
 
     # 低置信度确认语
     if add_confirmation and state.generated_answer:
@@ -238,7 +278,7 @@ async def run_pipeline(
     state.hallucination_action = "pass"
     state.is_grounded = state.grader_score >= settings.GRADER_THRESHOLD
 
-    checker_task = asyncio.create_task(hallucination_checker.run(state))
+    checker_task = asyncio.create_task(hallucination_checker.run(state, ctx=ctx))
 
     async def _run_checker():
         try:
@@ -268,8 +308,10 @@ async def run_pipeline(
     if state.generated_answer:
         try:
             from core.rag.post_process import run as post_run
-            post_result = await post_run(state.generated_answer)
-            state.generated_answer = post_result["text"]
+            async with ctx.span("post_process") as _pp:
+                post_result = await post_run(state.generated_answer)
+                state.generated_answer = post_result["text"]
+                _pp.attributes["pii_detected"] = bool(post_result.get("pii_detected"))
             if post_result["pii_detected"]:
                 logger.warning(
                     f"[{state.session_id}] PII in output: "
@@ -287,6 +329,9 @@ async def run_pipeline(
         f"{state.total_latency_ms}ms grader={state.grader_score:.2f} "
         f"cache_hit={state.cache_hit}"
     )
+    ctx.exit_branch = ctx.exit_branch or "full_rag"
+    asyncio.create_task(_persist_trace_safe(ctx, state))
+    state.pipeline_trace = [s.to_dict() for s in ctx.spans]
     return state
 
 
@@ -350,6 +395,15 @@ async def _save_lead_state(session_id: str, lead_info: dict) -> None:
         )
     except Exception as e:
         logger.warning(f"lead_state save error: {e}")
+
+
+async def _persist_trace_safe(ctx, state):
+    """安全的异步 trace 持久化，不抛异常"""
+    try:
+        from core.observability import persist_trace
+        await persist_trace(ctx, state)
+    except Exception as e:
+        logger.warning(f"trace persist failed: {e}")
 
 
 async def _clear_lead_state(session_id: str) -> None:

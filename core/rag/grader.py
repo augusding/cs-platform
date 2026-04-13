@@ -23,25 +23,34 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-async def run(state: RAGState) -> RAGState:
-    if not state.retrieved_chunks:
-        state.grader_score = 0.0
+async def run(state: RAGState, ctx=None) -> RAGState:
+    if ctx is None:
+        from core.observability import NullTraceContext
+        ctx = NullTraceContext()
+
+    async with ctx.span("grader") as _gs:
+        if not state.retrieved_chunks:
+            state.grader_score = 0.0
+        else:
+            top_chunks = state.retrieved_chunks[:3]
+            scores = [c.get("score", 0.0) for c in top_chunks]
+            state.grader_score = sum(scores) / len(scores)
+
+        logger.debug(
+            f"Grader score: {state.grader_score:.3f} "
+            f"(threshold={settings.GRADER_THRESHOLD}, attempts={state.attempts})"
+        )
+        _gs.attributes["score"] = state.grader_score
+        _gs.attributes["threshold"] = settings.GRADER_THRESHOLD
+        _gs.attributes["passed"] = state.grader_score >= settings.GRADER_THRESHOLD
+        _gs.attributes["attempts"] = state.attempts
+
+        state.trace("grader", {
+            "score": state.grader_score,
+            "passed": state.grader_score >= settings.GRADER_THRESHOLD,
+            "attempts": state.attempts,
+        })
         return state
-
-    top_chunks = state.retrieved_chunks[:3]
-    scores = [c.get("score", 0.0) for c in top_chunks]
-    state.grader_score = sum(scores) / len(scores)
-
-    logger.debug(
-        f"Grader score: {state.grader_score:.3f} "
-        f"(threshold={settings.GRADER_THRESHOLD}, attempts={state.attempts})"
-    )
-    state.trace("grader", {
-        "score": state.grader_score,
-        "passed": state.grader_score >= settings.GRADER_THRESHOLD,
-        "attempts": state.attempts,
-    })
-    return state
 
 
 def should_retry(state: RAGState) -> bool:

@@ -30,7 +30,11 @@ def _bm25_filter(chunks: list[dict], query: str, top_k: int) -> list[dict]:
     return scored[:top_k]
 
 
-async def run(state: RAGState) -> RAGState:
+async def run(state: RAGState, ctx=None) -> RAGState:
+    if ctx is None:
+        from core.observability import NullTraceContext
+        ctx = NullTraceContext()
+
     query = state.transformed_query or state.user_query
     top_k = settings.RETRIEVAL_TOP_K
 
@@ -40,8 +44,16 @@ async def run(state: RAGState) -> RAGState:
         f"strategy={state.transform_strategy}"
     )
 
-    faq_chunks = await _search_faq(state)
-    vector_chunks = await _search_vector(state, query, top_k)
+    async with ctx.span("retriever", "faq_search") as _fs:
+        faq_chunks = await _search_faq(state)
+        _fs.attributes["count"] = len(faq_chunks)
+
+    async with ctx.span("retriever", "vector_search") as _vs:
+        vector_chunks = await _search_vector(state, query, top_k)
+        _vs.attributes["count"] = len(vector_chunks)
+        _vs.attributes["top_score"] = (
+            vector_chunks[0]["score"] if vector_chunks else 0
+        )
 
     all_chunks = faq_chunks + vector_chunks
     state.retrieved_chunks = all_chunks[:top_k]
@@ -57,6 +69,12 @@ async def run(state: RAGState) -> RAGState:
             f"source={c.get('source_id','')[:8]} "
             f"content='{c.get('content','')[:50]}'"
         )
+
+    ctx.add_span("retriever", "retriever_merge", attributes={
+        "total_chunks": len(state.retrieved_chunks),
+        "top_score": top_score,
+        "sources": list({c.get("source_id", "") for c in state.retrieved_chunks[:5]}),
+    })
 
     state.trace("retriever", {
         "chunks_count": len(state.retrieved_chunks),

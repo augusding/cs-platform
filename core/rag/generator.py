@@ -4,6 +4,7 @@ Generator 节点：基于检索结果生成回答（流式）。
 支持流式回调 on_token(token: str)
 """
 import logging
+import time
 
 from openai import AsyncOpenAI
 
@@ -48,7 +49,11 @@ def _get_client(use_fallback: bool = False) -> AsyncOpenAI:
     )
 
 
-async def run(state: RAGState, on_token=None) -> RAGState:
+async def run(state: RAGState, on_token=None, ctx=None) -> RAGState:
+    if ctx is None:
+        from core.observability import NullTraceContext
+        ctx = NullTraceContext()
+
     system = _ZH_SYSTEM if state.language == "zh" else _EN_SYSTEM
     context = _build_context(state.retrieved_chunks)
 
@@ -63,6 +68,8 @@ async def run(state: RAGState, on_token=None) -> RAGState:
 
     answer_parts: list[str] = []
     use_fallback = False
+    _gen_start = time.time()
+    model = settings.QWEN_MODEL
 
     for attempt in range(2):
         try:
@@ -70,6 +77,7 @@ async def run(state: RAGState, on_token=None) -> RAGState:
             model = (
                 settings.DEEPSEEK_MODEL if use_fallback else settings.QWEN_MODEL
             )
+            _call_start = time.time()
             stream = await client.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -84,6 +92,19 @@ async def run(state: RAGState, on_token=None) -> RAGState:
                     state.generated_answer = "".join(answer_parts)
                     if on_token:
                         await on_token(delta)
+            ctx.add_span(
+                "llm_call", "llm_generate",
+                start_ms=int(_call_start * 1000),
+                duration_ms=int((time.time() - _call_start) * 1000),
+                attributes={
+                    "model": model,
+                    "provider": "deepseek" if use_fallback else "qwen",
+                    "stream": True,
+                    "tokens_out": len(state.generated_answer) // 2,
+                    "fallback_used": use_fallback,
+                    "answer_len": len(state.generated_answer),
+                },
+            )
             break
         except Exception as e:
             if (
@@ -108,4 +129,9 @@ async def run(state: RAGState, on_token=None) -> RAGState:
                     await on_token(state.generated_answer)
                 break
 
+    ctx.add_span("generator", attributes={
+        "answer_len": len(state.generated_answer),
+        "fallback_used": use_fallback,
+        "duration_ms": int((time.time() - _gen_start) * 1000),
+    })
     return state

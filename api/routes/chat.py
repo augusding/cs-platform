@@ -96,6 +96,15 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
 
             try:
                 from core.engine import run_pipeline
+                from core.observability import TraceContext
+                ctx = TraceContext(
+                    bot_id=key_bot_id,
+                    tenant_id=tenant_id,
+                    session_id=session_id,
+                    channel="widget",
+                    user_query=user_content,
+                    language=language,
+                )
                 state = await run_pipeline(
                     user_query=user_content,
                     bot_id=key_bot_id,
@@ -105,6 +114,7 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
                     history=history,
                     on_token=on_token,
                     db_pool=db,
+                    ctx=ctx,
                 )
             except Exception as e:
                 logger.error(f"Pipeline error: {e}")
@@ -196,6 +206,7 @@ async def chat_ws(request: web.Request) -> web.WebSocketResponse:
                 "grounded": state.is_grounded,
                 "cache_hit": state.cache_hit,
                 "latency_ms": state.total_latency_ms,
+                "trace_id": ctx.trace_id,
             }
 
             if state.should_transfer:

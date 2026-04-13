@@ -118,8 +118,9 @@ out_of_scope   - 完全无关（写代码/天气预报/股票/算命）
 """
 
 
-async def _llm_classify(state: RAGState, context: dict) -> tuple[str, float, str]:
+async def _llm_classify(state: RAGState, context: dict, ctx=None) -> tuple[str, float, str]:
     """LLM 语义分类，返回 (intent, confidence, reason)"""
+    import time as _time
     from config import settings
 
     history_text = ""
@@ -160,6 +161,7 @@ async def _llm_classify(state: RAGState, context: dict) -> tuple[str, float, str
 {{"intent": "multi_intent", "confidence": 0.90, "reason": "包含价格和库存两个问题", "sub_intents": ["price_inquiry", "availability"]}}
 """
 
+    _t0 = _time.time()
     try:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(
@@ -173,6 +175,15 @@ async def _llm_classify(state: RAGState, context: dict) -> tuple[str, float, str
             temperature=0,
         )
         raw = resp.choices[0].message.content.strip()
+        if ctx:
+            ctx.add_span(
+                "llm_call", "llm_router_classify",
+                duration_ms=int((_time.time() - _t0) * 1000),
+                attributes={
+                    "model": settings.QWEN_MODEL,
+                    "tokens_out": len(raw) // 2,
+                },
+            )
         raw = re.sub(r'^```json\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw)
         data = json.loads(raw)
@@ -185,9 +196,22 @@ async def _llm_classify(state: RAGState, context: dict) -> tuple[str, float, str
         return Intent.PRODUCT_INFO, 0.5, "LLM失败，fallback"
 
 
-async def run(state: RAGState) -> RAGState:
+async def run(state: RAGState, ctx=None) -> RAGState:
     """Router 主函数：混合识别 → 写入 state"""
+    if ctx is None:
+        from core.observability import NullTraceContext
+        ctx = NullTraceContext()
 
+    async with ctx.span("router") as _rs:
+        result = await _run_inner(state, ctx)
+        _rs.attributes["intent"] = state.intent
+        _rs.attributes["confidence"] = state.intent_confidence
+        _rs.attributes["skip_retrieval"] = state.skip_retrieval
+        _rs.attributes["should_transfer"] = state.should_transfer
+        return result
+
+
+async def _run_inner(state: RAGState, ctx) -> RAGState:
     # Step 1: 规则预筛
     rule_result = _rule_match(state.user_query)
     rule_intent, rule_conf = rule_result if rule_result else (None, 0.0)
@@ -219,7 +243,7 @@ async def run(state: RAGState) -> RAGState:
             state.transform_strategy = "follow_up"
 
     # Step 3: LLM 分类
-    llm_intent, llm_conf, llm_reason = await _llm_classify(state, context)
+    llm_intent, llm_conf, llm_reason = await _llm_classify(state, context, ctx=ctx)
 
     # Step 4: 信号融合
     if rule_intent and rule_intent == llm_intent:

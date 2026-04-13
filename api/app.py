@@ -46,6 +46,10 @@ async def _on_startup(app: web.Application) -> None:
     from core.engine import set_redis
     set_redis(app["redis"])
 
+    # 注入 DB pool 到 observability（用于 trace 持久化）
+    from core.observability import set_db_pool as set_trace_db
+    set_trace_db(app["db"])
+
     logger.info("所有连接池已就绪")
 
 

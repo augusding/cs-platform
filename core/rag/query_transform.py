@@ -96,7 +96,20 @@ async def _decompose(query: str, language: str) -> list[str]:
         return [query]
 
 
-async def run(state: RAGState) -> RAGState:
+async def run(state: RAGState, ctx=None) -> RAGState:
+    if ctx is None:
+        from core.observability import NullTraceContext
+        ctx = NullTraceContext()
+
+    async with ctx.span("query_transform") as _qs:
+        result = await _run_inner(state)
+        _qs.attributes["strategy"] = state.transform_strategy
+        _qs.attributes["original"] = state.user_query[:80]
+        _qs.attributes["transformed"] = state.transformed_query[:80]
+        return result
+
+
+async def _run_inner(state: RAGState) -> RAGState:
     query = state.user_query
     hint = state.transform_strategy  # Router 写入的策略提示
 
