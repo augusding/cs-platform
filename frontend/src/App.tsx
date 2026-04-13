@@ -9,6 +9,7 @@ import Leads        from './pages/Leads'
 import Members      from './pages/Members'
 import Billing      from './pages/Billing'
 import AuditLog     from './pages/AuditLog'
+import Traces       from './pages/Traces'
 import Profile      from './pages/Profile'
 import Login        from './pages/Login'
 
@@ -42,6 +43,7 @@ const NAV_SECTIONS = [
       { to: '/members', label: '成员管理', icon: 'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z' },
       { to: '/billing', label: '套餐管理', icon: 'M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z' },
       { to: '/audit',   label: '操作审计', icon: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z' },
+      { to: '/traces',  label: 'Pipeline 追踪', icon: 'M3 3v18h18v-2H5V3H3zm16 10l-4-4-4 4-4-4-1.41 1.41L9 13.59l4-4 4 4 4-4V17h2V9z' },
     ],
   },
 ]
@@ -202,6 +204,7 @@ function Shell() {
         <Route path="/members" element={<Layout title="成员管理"><Members /></Layout>} />
         <Route path="/billing" element={<Layout title="套餐管理"><Billing /></Layout>} />
         <Route path="/audit" element={<Layout title="操作审计"><AuditLog /></Layout>} />
+        <Route path="/traces" element={<Layout title="Pipeline 追踪"><Traces /></Layout>} />
         <Route path="/profile" element={<Layout title="个人设置"><Profile /></Layout>} />
       </Routes>
     </div>
