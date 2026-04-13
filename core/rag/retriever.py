@@ -75,7 +75,14 @@ def _rrf_merge(vector_chunks: list[dict], bm25_chunks: list[dict],
         v_rank = vector_ranks.get(cid, max_rank)
         b_rank = bm25_ranks.get(cid, max_rank)
         rrf_score = 1.0 / (_RRF_K + v_rank) + 1.0 / (_RRF_K + b_rank)
-        rrf_scored.append({**chunk, "rrf_score": rrf_score, "score": rrf_score})
+        # 保留原始 cosine score，无 rerank 时 Grader 需要用它作为 relevance
+        cosine_score = chunk.get("score", 0.0)
+        rrf_scored.append({
+            **chunk,
+            "cosine_score": cosine_score,
+            "rrf_score": rrf_score,
+            "score": rrf_score,
+        })
 
     rrf_scored.sort(key=lambda x: x["rrf_score"], reverse=True)
     return rrf_scored[:top_k]
@@ -124,18 +131,30 @@ async def run(state: RAGState, ctx=None) -> RAGState:
     # ── 4. RRF 融合 ──
     merged = _rrf_merge(vector_chunks, bm25_chunks, top_k=top_k)
 
-    # ── 5. LLM 精排 ──
-    try:
-        from core.rag.reranker import rerank
-        reranked = await rerank(
-            query=state.user_query,
-            chunks=merged,
-            top_n=min(top_k, 5),
-            ctx=ctx,
-        )
-    except Exception as e:
-        logger.warning(f"[Retriever] Rerank failed: {e}, using RRF order")
+    # ── 5. LLM 精排（仅对长查询或 re-retrieve 时启用）──
+    use_rerank = (
+        len(state.user_query) > 15  # 短查询跳过
+        and state.attempts > 0      # 首次检索不精排，re-retrieve 时才精排
+    ) or state.intent == "comparison"  # 对比查询总是精排
+
+    if use_rerank:
+        try:
+            from core.rag.reranker import rerank
+            reranked = await rerank(
+                query=state.user_query,
+                chunks=merged,
+                top_n=min(top_k, 5),
+                ctx=ctx,
+            )
+        except Exception as e:
+            logger.warning(f"[Retriever] Rerank failed: {e}")
+            reranked = merged[:5]
+    else:
+        # 不精排：直接用 RRF 排序的 top-5
+        # relevance 用原始 cosine score（RRF score 是相对排序分，不是绝对相关度）
         reranked = merged[:5]
+        for c in reranked:
+            c["relevance"] = c.get("cosine_score", c.get("score", 0.5))
 
     # ── 6. 合并 FAQ + 精排结果 ──
     final_chunks = faq_chunks + reranked
