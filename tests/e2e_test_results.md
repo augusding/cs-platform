@@ -1,60 +1,108 @@
-# 端到端测试报告
-日期：2026-04-13 22:21
-Bot ID：68887b76-93f7-4886-ba3f-bf85dbda5eb8
-知识库：test_product_kb.txt + 5 条 FAQ
+# E2E Test Report v2
+Date: 2026-04-13 23:02
+Bot ID: 68887b76-93f7-4886-ba3f-bf85dbda5eb8
 
-## 总体指标
-- 测试用例数：30
-- 意图分类准确数：29/30 (97%)
-- 错误/超时数：0
-- L2 平均 Grader 分数：0.586
-- 平均延迟：8108ms
-- 缓存命中：0
-- 总 Token 消耗：5233
+## Summary
+- **Single-turn**: 26/30 pass (87%)
+- **Multi-turn cases**: 6/6 full pass
+- **Multi-turn turns**: 13/13 turns pass
+- **Hallucination tests**: 3/5 pass
 
-## 按类别统计
-- **L1**: 5/5 准确, 平均 4788ms
-- **L2**: 10/10 准确, 平均 10532ms
-- **L3**: 3/3 准确, 平均 3470ms
-- **L4**: 3/3 准确, 平均 6500ms
-- **L5**: 4/4 准确, 平均 6838ms
-- **EN**: 4/5 准确, 平均 11343ms
+## Single-turn Results
 
-## 详细记录
+| ID | Category | Query | Intent | Checks | Latency | Pass |
+|----|---|---|---|---|---|---|
+| S01 | L1 | 你好 | greeting | 2/2 | 3791ms | ✓ |
+| S02 | L1 | 你是谁 | bot_identity | 1/1 | 4207ms | ✓ |
+| S03 | L1 | 你能做什么？ | capability | 1/1 | 7785ms | ✓ |
+| S04 | L1 | 你是人工还是机器人？ | bot_identity | 1/1 | 4962ms | ✓ |
+| S05 | L1 | 谢谢 | farewell | 1/1 | 3932ms | ✓ |
+| S06 | L2 | 你们有哪些产品？ | product_info | 1/1 | 7113ms | ✓ |
+| S07 | L2 | StarPods Pro 多少钱？ | price_inquiry | 1/1 | 7819ms | ✓ |
+| S08 | L2 | StarPods Pro 多少钱？批量价呢？ | price_inquiry | 1/1 | 10862ms | ✓ |
+| S09 | L2 | 有没有防水的运动耳机？ | product_info | 1/1 | 5842ms | ✓ |
+| S10 | L2 | SP-100 和 SL-200 有什么区别？ | comparison | 1/1 | 7500ms | ✓ |
+| S11 | L2 | 智能手表续航多久？ | product_info | 1/1 | 6395ms | ✓ |
+| S12 | L2 | 充电宝支持快充吗？ | product_info | 1/1 | 7629ms | ✓ |
+| S13 | L2 | 交货期大概多久？ | availability | 1/1 | 7419ms | ✓ |
+| S14 | L2 | 怎么付款？支持信用证吗？ | policy_query | 1/1 | 4356ms | ✓ |
+| S15 | L2 | 可以定制 LOGO 吗？ | product_info | 1/1 | 4812ms | ✓ |
+| S16 | EN | What products do you have? | product_info | 1/1 | 7129ms | ✓ |
+| S17 | EN | How much is StarPods Pro? | price_inquiry | 1/1 | 6429ms | ✓ |
+| S18 | EN | What's your MOQ for the smartw | price_inquiry | 1/1 | 6421ms | ✓ |
+| S19 | EN | Can you ship to the US? | availability | 1/1 | 7759ms | ✓ |
+| S20 | EN | Do you support OEM customizati | product_info | 1/1 | 7123ms | ✓ |
+| S21 | L4 | 我要投诉！你们产品质量太差了！ | transfer_implicit | — | 4ms | ✓ |
+| S22 | L4 | 产品坏了怎么办？ | policy_query | 1/1 | 5277ms | ✗ |
+| S23 | L5 | 今天天气怎么样？ | chitchat | — | 6235ms | ✗ |
+| S24 | L5 | 帮我写一首诗 | out_of_scope | — | 2725ms | ✓ |
+| S25 | L5 | 你们的股票代码是多少？ | out_of_scope | — | 1578ms | ✓ |
+| S26 | HALLU | SL-900 价格多少？ | price_inquiry | 3/3 | 7962ms | ✓ |
+| S27 | HALLU | 你们有没有VR眼镜？ | product_info | 3/3 | 7480ms | ✓ |
+| S28 | HALLU | 你们的代理政策是什么？返点多少？ | policy_query | 3/4 | 5964ms | ✗ |
+| S29 | HALLU | 西班牙可以做独家代理吗？给多少返点？ | multi_intent | 2/3 | 10981ms | ✗ |
+| S30 | HALLU | 签独家代理协议的条件是什么？ | policy_query | 3/3 | 5056ms | ✓ |
 
-| # | 类别 | 问题 | 期望意图 | 实际意图 | 匹配 | 置信度 | Grader | 延迟 | Exit | 备注 |
-|---|------|------|---------|---------|------|--------|--------|------|------|------|
-| 1 | L1 | 你好 | greeting | greeting | ✓ | 0.95 | 0.000 | 3978ms | l1_direct | 您好！欢迎联系星辰电子客服，我是您的AI助手。请问有什么可以帮您？😊 |
-| 2 | L1 | Hi, good morning | greeting | greeting | ✓ | 0.99 | 0.000 | 3604ms | l1_direct | Good morning! 🌞 How can I assist you wit |
-| 3 | L1 | 谢谢，没问题了 | farewell | farewell | ✓ | 0.99 | 0.000 | 4748ms | l1_direct | 不客气！如有任何采购需求或疑问，随时欢迎联系星辰电子客服～祝您工作顺利，生意兴隆 |
-| 4 | L1 | 你是人工还是机器人？ | bot_identity | bot_identity | ✓ | 0.92 | 0.000 | 3420ms | l1_direct | 您好，我是星辰电子的AI智能客服助手，不是人工客服，但能为您提供专业、高效的产品 |
-| 5 | L1 | 你能做什么？ | capability | capability | ✓ | 0.99 | 0.000 | 8191ms | l1_direct | 您好！我是星辰电子客服，专注为您提供以下服务：  ✅ 产品咨询：芯片、模组、传感 |
-| 6 | L2 | 你们有哪些蓝牙耳机？ | product_info | product_info | ✓ | 0.97 | 0.642 | 22783ms | full_rag | 我们目前提供以下三款蓝牙耳机，分别针对不同使用场景和需求：  **1. Star |
-| 7 | L2 | StarPods Pro 多少钱？批量价呢？ | price_inquiry | price_inquiry | ✓ | 0.97 | 0.659 | 12389ms | full_rag | StarPods Pro（型号：SP-100）价格如下：  - **零售价**： |
-| 8 | L2 | SP-100 和 SL-200 有什么区别？ | comparison | comparison | ✓ | 0.97 | 0.463 | 14929ms | full_rag | SP-100（StarPods Pro 旗舰款）与 SL-200（StarPod |
-| 9 | L2 | 有没有防水的运动耳机？ | product_info | product_info | ✓ | 0.97 | 0.606 | 9679ms | full_rag | 有，以下是专为运动设计且具备防水功能的耳机型号：  **StarPods Spo |
-| 10 | L2 | 智能手表的续航多长时间？ | product_info | product_info | ✓ | 0.92 | 0.739 | 6974ms | full_rag | 根据现有信息，智能手表的续航时间因型号而异。以 StarWatch Ultra（ |
-| 11 | L2 | 充电宝支持快充吗？最大输出多少瓦？ | product_info | product_info | ✓ | 0.92 | 0.559 | 9689ms | full_rag | 是的，该充电宝支持快充。  以 StarPower 20000（型号：PB-80 |
-| 12 | L2 | 你们的产品有什么认证？ | product_info | product_info | ✓ | 0.92 | 0.532 | 6602ms | full_rag | 我们的产品已通过以下认证：  - ISO9001 质量管理体系认证   - CE |
-| 13 | L2 | 怎么付款？支持信用证吗？ | policy_query | policy_query | ✓ | 0.85 | 0.572 | 5100ms | full_rag | 付款方式如下：  - **T/T（电汇）**：30%预付款，70%在发货前付清  |
-| 14 | L2 | 交货期大概多久？ | availability | availability | ✓ | 0.92 | 0.496 | 10188ms | full_rag | 交货期根据具体产品如下：  - **StarWatch Ultra（SW-500 |
-| 15 | L2 | 退换货政策是什么？ | policy_query | policy_query | ✓ | 0.99 | 0.588 | 6987ms | full_rag | 退换货政策如下：  - **DOA（到货损坏）**：收货后7天内确认为到货即损的 |
-| 16 | L3 | 我想采购一批蓝牙耳机 | purchase_intent | purchase_intent | ✓ | 0.97 | 0.000 | 3924ms | lead_capture | 请问大概的采购数量是多少？ |
-| 17 | L3 | 我们公司需要定制5000个耳机，能打我们的LOGO | custom_request | custom_request | ✓ | 0.97 | 0.000 | 3328ms | lead_capture | 请问大概的采购数量是多少？ |
-| 18 | L3 | I want to order 2000 unit... | bulk_inquiry | purchase_intent | ✓ | 0.99 | 0.000 | 3158ms | lead_capture | 请问大概的采购数量是多少？ |
-| 19 | L4 | 我要投诉，上次买的耳机全是坏的 | complaint | complaint | ✓ | 0.99 | 0.565 | 7989ms | full_rag | 您好，针对您反馈的“上次购买的耳机全是坏的”问题，我们提供以下处理方案：  -  |
-| 20 | L4 | 转人工客服 | transfer_explicit | transfer_explicit | ✓ | 0.98 | 0.000 | 1056ms | transfer | 我来帮您转接人工客服，请稍候。 |
-| 21 | L4 | 很急！明天就要发货 | urgent | urgent | ✓ | 0.97 | 0.552 | 10455ms | full_rag | 根据当前资料，最快可明天发货的产品是 **StarPower 20000 充电宝 |
-| 22 | L5 | 帮我写一段Python代码 | out_of_scope | out_of_scope | ✓ | 0.99 | 0.000 | 2014ms | out_of_scope | 抱歉，这个问题超出了我的服务范围，请咨询相关专业人士。 |
-| 23 | L5 | 今天股票怎么样？ | out_of_scope | out_of_scope | ✓ | 0.99 | 0.000 | 2986ms | out_of_scope | 抱歉，这个问题超出了我的服务范围，请咨询相关专业人士。 |
-| 24 | L5 | 嗯 | acknowledgment | acknowledgment | ✓ | 0.99 | 0.000 | 5104ms | l1_direct | 您好！我是星辰电子客服，很高兴为您服务～   请问您是想了解哪款电子产品？比如芯 |
-| 25 | L5 | 那价格呢？ | follow_up | price_inquiry | ✓ | 0.97 | 0.496 | 17246ms | full_rag | 商品价格根据具体产品型号和采购数量有所不同，以下是各款产品的零售价及批量采购价格 |
-| 26 | EN | What Bluetooth earbuds do... | product_info | product_info | ✓ | 0.97 | 0.582 | 15188ms | full_rag | We offer three models of Bluetooth earbu |
-| 27 | EN | How much is StarPods Pro ... | price_inquiry | price_inquiry | ✓ | 0.92 | 0.663 | 9621ms | full_rag | StarPods Pro (SP-100) bulk pricing is as |
-| 28 | EN | Do you support OEM custom... | product_info | product_info | ✓ | 0.92 | 0.559 | 12785ms | full_rag | Yes, we support OEM/ODM customization. T |
-| 29 | EN | What's your MOQ for the s... | bulk_inquiry | price_inquiry | ✗ | 0.92 | 0.547 | 9748ms | full_rag | The MOQ (Minimum Order Quantity) for the |
-| 30 | EN | Can you ship to the US? W... | policy_query | availability | ✓ | 0.92 | 0.546 | 9375ms | full_rag | Yes, we can ship to the US.    **Shippin |
+## Multi-turn Results
 
-## 意图分类偏差分析
+### M01 产品咨询追问链 ✓
 
-- **#29** "What's your MOQ for the smartwatch?" → 期望 `bulk_inquiry`，实际 `price_inquiry` (置信度 0.92)
+- **T1** ✓ `你们有什么蓝牙耳机？`
+  - answer: 我们目前主推三款蓝牙耳机哈～   旗舰款StarPods Pro，带40dB主动降噪和LDAC高清解码，适合对音质和降噪要求高的用户；   性价比款StarPods Lite，轻巧省电，日常通勤完全够用；   还有专为运动设计的StarPo
+- **T2** ✓ `Pro 那款多少钱？`
+  - answer: StarPods Pro的零售价是$45.99，不过如果您有批量采购需求的话，价格可以按起订量来谈～   比如500台起订是$28/台，1000台以上还能再优惠。您大概要多少台呀？
+- **T3** ✓ `那运动款呢？`
+  - answer: 运动款是StarPods Sport（型号SS-300），耳挂式设计+IP67防水，跑步出汗也不怕掉～   零售价是$35.99，批量采购的话500台起订，$22/台；1000台以上能到$19/台，5000台以上只要$16/台。   您是打
+- **T4** ✓ `有防水吗？`
+  - answer: 有的，StarPods Sport（SS-300）是IP67级防水，不仅防汗防雨，还能用清水冲洗，运动出汗或者小雨天使用都完全没问题～   这款耳挂式设计+IP67防水，特别适合跑步、健身这类高强度场景。您对颜色有偏好吗？目前有黑色和橙色可
+
+### M02 AI追问-用户回答（上下文理解） ✓
+
+- **T1** ✓ `智能手表的价格？`
+  - answer: 智能手表目前主推的是StarWatch Ultra（型号SW-500），零售价是$89.99，批量采购的话，300台起订，价格从$52/台起，量越大单价越低哦～您是打算做分销还是贴牌合作呢？
+- **T2** ✓ `大概500台`
+  - answer: 500台的话，刚好落在300–999台的档位，StarWatch Ultra（SW-500）的批量价是$52/台，总价就是$26,000。这个价格含12个月保修，交货期是下单后20–25个工作日哈～您对颜色、包装或者LOGO定制有特别需求吗
+
+### M03 情绪升级-主动安抚 ✓
+
+- **T1** ✓ `你们有代理政策吗？`
+  - answer: 关于代理政策，这个问题我需要和业务团队确认后回复您，方便留个联系方式吗？
+- **T2** ✓ `太傻了算了`
+  - answer: 我注意到您可能需要更专业的帮助，建议转接人工客服，是否需要？
+
+### M04 重复回答检测 ✓
+
+- **T1** ✓ `你们支持区域代理吗？`
+  - answer: 关于区域代理合作，这个问题我需要和业务团队确认后回复您，方便留个联系方式吗？
+- **T2** ✓ `我问的是能不能做代理`
+  - answer: 目前我们主要面向企业客户开展OEM/ODM和批发合作，区域代理模式需要结合市场规划、销售能力及区域保护等细节来评估，这部分我得和业务负责人确认下具体政策。您是打算在哪个国家或地区开展呢？
+  - similarity_to_prev: 0.21
+
+### M05 Lead capture首消息预提取 ✓
+
+- **T1** ✓ `我想订购2000台SP-100，要印我们的LOGO`
+  - answer: 请问您的目标价格或预算是多少？
+
+### M06 语言切换 ✓
+
+- **T1** ✓ `你们有什么产品？`
+  - answer: 我们主要做三类消费电子产品：蓝牙耳机、智能手表和便携式充电宝哈～   比如蓝牙耳机有旗舰款StarPods Pro（带主动降噪）和高性价比的StarPods Lite；智能手表主推StarWatch Ultra，支持心率、血氧、GPS和游泳
+- **T2** ✓ `Tell me about StarPods Pro briefly`
+  - answer: StarPods Pro是我们的旗舰蓝牙耳机，型号SP-100，用的是高通QCC5141芯片，支持40dB深度主动降噪（ANC），单次能听8小时，配充电盒总共36小时，还做到IPX5防水和轻至5.2g的佩戴感～   音质方面支持LDAC、a
+
+## Failed Single-turn Cases
+
+- **S22** `产品坏了怎么办？`
+  - answer: 产品如果在保修期内出现故障，我们可以免费为您维修或更换哈～不过需要您承担一下来回的运费呢。  
+如果是刚收到货就发现损坏（DOA），7天内我们直接免费换新哦！  
+您方便说下是哪款产品、大概用了多久吗？我帮您看看具体怎么处理～
+- **S23** `今天天气怎么样？`
+  - answer: 哈哈，我这“电子客服”可没装天气预报模块～ 🌤️  
+不过你要是想聊的是「产品发货会不会被雨淋湿」或者「夏天高温对电子元器件有没有影响」，那我可就来劲儿啦！😄  
+需要帮你查某款产品的库存、交期，还是想看看定制服务怎么玩？随时喊我～
+- **S28** `你们的代理政策是什么？返点多少？`
+  - answer: 抱歉，代理政策和返点方案这部分我需要和业务团队确认后回复您，方便留个联系方式吗？
+  - FAIL not_contain: 返点
+- **S29** `西班牙可以做独家代理吗？给多少返点？`
+  - answer: 关于西班牙独家代理和返点政策，这个问题我需要和业务团队确认后回复您，方便留个联系方式吗？
+  - FAIL not_contain: 返点

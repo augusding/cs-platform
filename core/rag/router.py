@@ -41,6 +41,13 @@ RULE_SIGNALS: list[tuple[str, list[str], float]] = [
     (Intent.CHITCHAT,
      [r"(讲个故事|讲个笑话|说个笑话|给我讲|天气怎么样|你喜欢|你觉得好玩|聊聊天)"],
      0.88),
+    (Intent.PURCHASE_INTENT,
+     # 只匹配明确的动词/意向表达，避免误伤"代理政策"这类询问
+     [r"(想做|要做|申请做|成为|我们做)(代理|经销|分销)",
+      r"(我们|我方|我司).{0,4}(代理|经销|分销)",
+      r"(distribution|dealership|reseller)\s+(opportunity|application|inquiry)",
+      r"become.*(?:distributor|dealer|reseller|agent)"],
+     0.88),
     (Intent.ACKNOWLEDGMENT,
      [r"^[\s\W]*(好的|明白|收到|了解|知道了|OK|ok|嗯|好)[\s\W]*$"],
      0.90),
@@ -82,10 +89,16 @@ def _context_signals(state: RAGState) -> dict:
     if (is_short or has_follow_marker or ends_with_ne) and state.history:
         signals["is_follow_up"] = True
 
-    # 更严格的情绪升级检测：需要明确的负面表达
+    # 情绪升级检测：包括持续不满和单句直接否定
     ESCALATION_PATTERNS = [
+        # 持续不满
         r'(说了好几遍|重复了好多次|一直没解决|还是不行|太差了|烂死了|垃圾系统|要投诉)',
         r'(帮不了|解决不了|AI没用|机器人没用|你没用)',
+        # 单句直接否定
+        r'(太傻|太蠢|太笨|太烂|太差|废物|智障|白痴|脑残)',
+        r'(答非所问|文不对题|牛头不对马嘴|听不懂人话|不知所云)',
+        r'(算了|不想聊了|没法沟通|聊不下去|浪费时间)',
+        r'(stupid|useless|terrible|awful|worst|dumb|idiot)',
     ]
     recent = [m.get('content', '') for m in state.history[-4:]]
     escalation_count = sum(
@@ -173,7 +186,7 @@ availability   - 库存/发货（有没有货/几天发货/现货）
 how_to_use     - 使用方法（怎么用/如何安装/使用步骤）
 policy_query   - 政策咨询（退换货/保修/售后规定）
 comparison     - 对比比较（A和B哪个好/区别/对比）
-purchase_intent - 明确表达采购意向的消息，必须包含意向动词（想买/要下单/需要采购/want to order/looking to purchase）。仅询问价格或信息不算
+purchase_intent - 明确表达采购意向或合作意向动词，包括：想买/要下单/需要采购/want to order；想做代理/我们想做经销/成为代理/become a distributor。**仅询问"是否有代理政策"/"代理条件是什么"属于 policy_query 不属于 purchase_intent**，只有主动声明要合作才算
 bulk_inquiry   - 明确表达批量采购意向（我要批量采购/想大量订购/need to order in bulk）。仅询问MOQ或批量价格属于 price_inquiry 而非 bulk_inquiry
 custom_request - 明确表达定制需求并有合作意向（我需要定制/要OEM合作）。仅询问是否支持定制属于 product_info 而非 custom_request
 complaint      - 投诉不满（太差/质量问题/投诉/不满意）
@@ -287,6 +300,7 @@ async def _run_inner(state: RAGState, ctx) -> RAGState:
 
     # Step 2: 上下文信号
     context = _context_signals(state)
+    state._emotion_trend = context.get("emotion_trend", "neutral")
 
     # 上下文快速路径
     if context["in_lead_flow"]:

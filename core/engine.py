@@ -193,9 +193,26 @@ async def run_pipeline(
             get_next_missing_field,
             calculate_intent_score,
             prompt_for,
+            DEFAULT_FIELDS,
         )
 
         lead_info = dict(state.lead_info or {})
+
+        # 首次进入 lead_capture：从触发消息中预提取所有能提取的字段
+        if not state.lead_in_progress:
+            for field in DEFAULT_FIELDS:
+                if not lead_info.get(field["key"]):
+                    try:
+                        extracted = await extract_info(
+                            state.user_query, field["key"], language
+                        )
+                        if extracted and extracted.strip() and len(extracted.strip()) > 1:
+                            lead_info[field["key"]] = extracted
+                            logger.debug(
+                                f"[LeadCapture] Pre-extracted {field['key']}: {extracted[:30]}"
+                            )
+                    except Exception as ex:
+                        logger.warning(f"[LeadCapture] pre-extract {field['key']} failed: {ex}")
 
         next_missing = get_next_missing_field(lead_info)
         if next_missing:
@@ -320,6 +337,13 @@ async def run_pipeline(
         logger.info(
             f"[{state.session_id}] Re-retrieve #{state.attempts} "
             f"(score={state.grader_score:.3f})"
+        )
+
+    # 负面情绪注入安抚指令
+    if getattr(state, "_emotion_trend", "neutral") in ("negative", "escalating"):
+        state._emotion_prompt = (
+            "\n\n【重要】用户表达了不满或负面情绪，请先道歉并表示理解，"
+            "然后尝试从新的角度理解用户需求。如果连续多轮无法满足，主动提出转接人工。"
         )
 
     # ── 5. Generator（流式）─────────────────────────────
