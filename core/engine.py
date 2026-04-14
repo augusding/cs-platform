@@ -189,22 +189,27 @@ async def run_pipeline(
 
     if state.intent in Intent.L3_LEAD or state.intent == "lead_capture":
         from core.rag.lead_collector import (
+            classify_user_reply,
             extract_info,
             get_next_missing_field,
+            get_next_missing_required,
+            can_skip_field,
             calculate_intent_score,
             prompt_for,
+            build_lead_rag_system_prompt,
             DEFAULT_FIELDS,
+            _MAX_ASK_SAME_FIELD,
         )
 
         lead_info = dict(state.lead_info or {})
 
-        # 首次进入 lead_capture：从触发消息中预提取所有能提取的字段
+        # ── 首次进入 lead_capture：预提取所有能提取的字段 ──
         if not state.lead_in_progress:
             for field in DEFAULT_FIELDS:
                 if not lead_info.get(field["key"]):
                     try:
                         extracted = await extract_info(
-                            state.user_query, field["key"], language
+                            user_query, field["key"], language
                         )
                         if extracted and extracted.strip() and len(extracted.strip()) > 1:
                             lead_info[field["key"]] = extracted
@@ -212,34 +217,19 @@ async def run_pipeline(
                                 f"[LeadCapture] Pre-extracted {field['key']}: {extracted[:30]}"
                             )
                     except Exception as ex:
-                        logger.warning(f"[LeadCapture] pre-extract {field['key']} failed: {ex}")
-
-        next_missing = get_next_missing_field(lead_info)
-        if next_missing:
-            extracted = await extract_info(
-                user_query, next_missing["key"], language
-            )
-            if extracted:
-                lead_info[next_missing["key"]] = extracted
+                        logger.warning(f"[LeadCapture] pre-extract failed: {ex}")
 
         state.lead_info = lead_info
-        next_missing = get_next_missing_field(lead_info)
+        next_field = get_next_missing_field(lead_info)
 
-        if next_missing:
-            prompt = prompt_for(next_missing, language)
-            state.generated_answer = prompt
-            state.is_grounded = True
-            state.hallucination_action = "pass"
-            await _save_lead_state(state.session_id, lead_info)
-            if on_token:
-                await on_token(prompt)
-        else:
+        # ── 所有字段都收集完了 → 完成 ──
+        if not next_field:
             state.lead_info["_score"] = calculate_intent_score(lead_info)
             state.lead_info["_complete"] = True
             complete_msg = (
                 "感谢您提供的信息！我们已记录您的需求，业务人员将在 24 小时内与您联系。"
                 if language == "zh"
-                else "Thank you for your information! Our team will contact you within 24 hours."
+                else "Thank you! Our team will contact you within 24 hours."
             )
             state.generated_answer = complete_msg
             state.is_grounded = True
@@ -247,6 +237,226 @@ async def run_pipeline(
             await _clear_lead_state(state.session_id)
             if on_token:
                 await on_token(complete_msg)
+            state.total_latency_ms = int((time.time() - start) * 1000)
+            ctx.exit_branch = "lead_capture_complete"
+            asyncio.create_task(_persist_trace_safe(ctx, state))
+            state.pipeline_trace = [s.to_dict() for s in ctx.spans]
+            return state
+
+        # ── 续接对话：分析用户回复类型 ──
+        if state.lead_in_progress:
+            classification = await classify_user_reply(
+                user_query, next_field, lead_info, language
+            )
+            reply_type = classification.get("type", "answer")
+
+            ask_count_key = f"_ask_count_{next_field['key']}"
+            ask_count = lead_info.get(ask_count_key, 0)
+
+            if reply_type == "answer":
+                # ── 用户在回答收集问题 ──
+                value = classification.get("extracted_value", "")
+                if value and value.strip() and len(value.strip()) > 1:
+                    lead_info[next_field["key"]] = value
+                    lead_info.pop(ask_count_key, None)
+
+                    state.lead_info = lead_info
+                    next_field = get_next_missing_field(lead_info)
+
+                    if not next_field:
+                        state.lead_info["_score"] = calculate_intent_score(lead_info)
+                        state.lead_info["_complete"] = True
+                        complete_msg = (
+                            "感谢您提供的信息！我们已记录您的需求，业务人员将在 24 小时内与您联系。"
+                            if language == "zh"
+                            else "Thank you! Our team will contact you within 24 hours."
+                        )
+                        state.generated_answer = complete_msg
+                        state.is_grounded = True
+                        state.hallucination_action = "pass"
+                        await _clear_lead_state(state.session_id)
+                        if on_token:
+                            await on_token(complete_msg)
+                        state.total_latency_ms = int((time.time() - start) * 1000)
+                        ctx.exit_branch = "lead_capture_complete"
+                        asyncio.create_task(_persist_trace_safe(ctx, state))
+                        state.pipeline_trace = [s.to_dict() for s in ctx.spans]
+                        return state
+
+                    ack = f"好的，{next_field['label']}方面，" if language == "zh" else "Got it. "
+                    prompt = ack + prompt_for(next_field, language)
+                    state.generated_answer = prompt
+                    state.is_grounded = True
+                    state.hallucination_action = "pass"
+                    await _save_lead_state(state.session_id, lead_info)
+                    if on_token:
+                        await on_token(prompt)
+                else:
+                    # 提取失败 → 限制重问次数
+                    ask_count += 1
+                    lead_info[ask_count_key] = ask_count
+
+                    if ask_count >= _MAX_ASK_SAME_FIELD and can_skip_field(next_field):
+                        lead_info[next_field["key"]] = "(未提供)"
+                        lead_info.pop(ask_count_key, None)
+                        state.lead_info = lead_info
+                        next_field = get_next_missing_field(lead_info)
+                        if next_field:
+                            prompt = prompt_for(next_field, language)
+                        else:
+                            state.lead_info["_score"] = calculate_intent_score(lead_info)
+                            state.lead_info["_complete"] = True
+                            prompt = (
+                                "感谢您提供的信息！我们已记录您的需求，业务人员将在 24 小时内与您联系。"
+                                if language == "zh"
+                                else "Thank you! Our team will contact you within 24 hours."
+                            )
+                            await _clear_lead_state(state.session_id)
+                        state.generated_answer = prompt
+                        state.is_grounded = True
+                        state.hallucination_action = "pass"
+                        await _save_lead_state(state.session_id, lead_info)
+                        if on_token:
+                            await on_token(prompt)
+                    else:
+                        retry_prompt = (
+                            f"不好意思没听清，{prompt_for(next_field, language)}"
+                            if language == "zh"
+                            else f"Sorry I didn't quite catch that. {prompt_for(next_field, language)}"
+                        )
+                        state.generated_answer = retry_prompt
+                        state.is_grounded = True
+                        state.hallucination_action = "pass"
+                        await _save_lead_state(state.session_id, lead_info)
+                        if on_token:
+                            await on_token(retry_prompt)
+
+            elif reply_type in ("counter_question", "off_topic"):
+                # ── 用户在反问/跑题 → 走 RAG 回答 + 末尾引导 ──
+                logger.info(
+                    f"[LeadCapture] User {reply_type}: '{user_query[:40]}', "
+                    f"falling through to RAG with lead context"
+                )
+
+                bot_name = "智能客服助手"
+                try:
+                    from store.base import fetch_one
+                    bot_row = await fetch_one(db_pool, "SELECT name FROM bots WHERE id = $1", bot_id)
+                    if bot_row:
+                        bot_name = bot_row["name"]
+                except Exception:
+                    pass
+
+                lead_system = build_lead_rag_system_prompt(
+                    lead_info, next_field, language, bot_name
+                )
+
+                state = await query_transform.run(state, ctx=ctx)
+                state = await retriever.run(state, ctx=ctx)
+                state = await grader.run(state, ctx=ctx)
+
+                state = await generator.run(
+                    state, on_token=on_token, ctx=ctx,
+                    system_override=lead_system,
+                )
+
+                await _save_lead_state(state.session_id, lead_info)
+
+                state.is_grounded = True
+                state.hallucination_action = "pass"
+                state.total_latency_ms = int((time.time() - start) * 1000)
+                ctx.exit_branch = "lead_capture_rag"
+                asyncio.create_task(_persist_trace_safe(ctx, state))
+                state.pipeline_trace = [s.to_dict() for s in ctx.spans]
+                return state
+
+            elif reply_type == "refusal":
+                # ── 用户拒绝 → 跳过非必填，必填换温和方式问 ──
+                if can_skip_field(next_field):
+                    lead_info[next_field["key"]] = "(客户选择不提供)"
+                    state.lead_info = lead_info
+                    next_field = get_next_missing_field(lead_info)
+                    if next_field:
+                        skip_msg = (
+                            f"没问题，那关于{next_field['label']}，{prompt_for(next_field, language)}"
+                            if language == "zh"
+                            else f"No problem. Regarding {next_field['label']}, {prompt_for(next_field, language)}"
+                        )
+                    else:
+                        state.lead_info["_score"] = calculate_intent_score(lead_info)
+                        state.lead_info["_complete"] = True
+                        skip_msg = (
+                            "感谢您提供的信息！我们已记录您的需求，业务人员将在 24 小时内与您联系。"
+                            if language == "zh"
+                            else "Thank you! Our team will contact you within 24 hours."
+                        )
+                        await _clear_lead_state(state.session_id)
+                else:
+                    skip_msg = (
+                        "理解，方便的话留个联系方式就行，邮箱或者 WhatsApp 都可以～"
+                        "这样我们业务同事可以直接给您发正式报价。"
+                        if language == "zh"
+                        else "I understand. Just an email or WhatsApp would be great — "
+                        "our team can send you a formal quote directly."
+                    )
+                state.generated_answer = skip_msg
+                state.is_grounded = True
+                state.hallucination_action = "pass"
+                await _save_lead_state(state.session_id, lead_info)
+                if on_token:
+                    await on_token(skip_msg)
+
+            elif reply_type == "frustration":
+                # ── 用户不耐烦 → 道歉 + 简化到只问必填字段 ──
+                remaining_required = get_next_missing_required(lead_info)
+                if remaining_required and remaining_required["key"] == "contact":
+                    frustration_msg = (
+                        "抱歉问多了！最后一个问题——方便留个联系方式吗？邮箱或 WhatsApp 就行，"
+                        "我们直接给您发报价，就不用再这样来回了。"
+                        if language == "zh"
+                        else "Sorry for all the questions! Just one more — could you share your email or WhatsApp? "
+                        "We'll send you a formal quote directly."
+                    )
+                else:
+                    for f in DEFAULT_FIELDS:
+                        if not f.get("required") and not lead_info.get(f["key"]):
+                            lead_info[f["key"]] = "(跳过)"
+                    state.lead_info = lead_info
+                    next_field = get_next_missing_field(lead_info)
+                    if next_field:
+                        frustration_msg = (
+                            "抱歉给您造成了不好的体验！要不这样，方便留个联系方式吗？"
+                            "我直接让业务同事联系您，一对一沟通更高效。"
+                            if language == "zh"
+                            else "Sorry about that! How about this — just leave your contact info "
+                            "and our team will reach out directly."
+                        )
+                    else:
+                        state.lead_info["_score"] = calculate_intent_score(lead_info)
+                        state.lead_info["_complete"] = True
+                        frustration_msg = (
+                            "感谢您的耐心！我们已记录您的需求，业务人员将尽快联系您。"
+                            if language == "zh"
+                            else "Thanks for your patience! Our team will reach out soon."
+                        )
+                        await _clear_lead_state(state.session_id)
+
+                state.generated_answer = frustration_msg
+                state.is_grounded = True
+                state.hallucination_action = "pass"
+                await _save_lead_state(state.session_id, lead_info)
+                if on_token:
+                    await on_token(frustration_msg)
+
+        else:
+            # ── 首次进入 → 问第一个缺失字段 ──
+            prompt = prompt_for(next_field, language)
+            state.generated_answer = prompt
+            state.is_grounded = True
+            state.hallucination_action = "pass"
+            await _save_lead_state(state.session_id, lead_info)
+            if on_token:
+                await on_token(prompt)
 
         state.total_latency_ms = int((time.time() - start) * 1000)
         ctx.exit_branch = "lead_capture"

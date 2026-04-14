@@ -130,6 +130,39 @@ MULTI_TURN_CASES = [
             {"query": "Tell me about StarPods Pro briefly", "should_contain_any": ["StarPods Pro", "ANC"]},
         ],
     },
+    {
+        "id": "M07",
+        "name": "Lead capture - 用户反问价格",
+        "turns": [
+            {"query": "我想订购 SP-100",
+             "should_contain_any": ["数量", "多少台", "quantity"]},
+            {"query": "20000",
+             "should_contain_any": ["价格", "预算", "目标价", "price"]},
+            {"query": "你们能给什么价格",
+             "should_contain_any": ["21", "24", "28", "报价", "价位"],
+             "should_not_contain": ["请问您的目标价格或预算是多少"]},
+        ],
+    },
+    {
+        "id": "M08",
+        "name": "Lead capture - 用户拒绝回答",
+        "turns": [
+            {"query": "我想采购蓝牙耳机",
+             "should_contain_any": ["数量", "多少台", "quantity"]},
+            {"query": "数量还没定",
+             "should_not_contain": ["请问大概的采购数量是多少"]},
+        ],
+    },
+    {
+        "id": "M09",
+        "name": "Lead capture - 用户不耐烦",
+        "turns": [
+            {"query": "我想做区域代理",
+             "should_contain_any": ["产品", "需求", "哪款", "数量"]},
+            {"query": "问这么多干嘛",
+             "should_contain_any": ["抱歉", "不好意思", "sorry", "联系方式", "邮箱"]},
+        ],
+    },
 ]
 
 
