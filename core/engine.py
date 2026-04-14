@@ -110,7 +110,8 @@ async def run_pipeline(
 
     # ── 中途 lead_capture 检测：有挂起的 lead 状态则跳过缓存 + Router ──
     pending_lead = await _load_lead_state(state.session_id)
-    if pending_lead:
+    if pending_lead is not None:
+        # 即使空 dict 也算续接（只要 session 存在 lead_state key）
         state.intent = "lead_capture"
         state.lead_info = pending_lead
         state.lead_in_progress = True
@@ -203,18 +204,20 @@ async def run_pipeline(
 
         lead_info = dict(state.lead_info or {})
 
-        # ── 首次进入 lead_capture：预提取所有能提取的字段 ──
-        if not state.lead_in_progress:
-            for field in DEFAULT_FIELDS:
-                if not lead_info.get(field["key"]):
+        # ── 首次进入 lead_capture：仅预提取最可靠的字段 ──
+        # 只预提取 product_requirement 和 quantity（这两个在"我想订购 X 台 Y"模式下高可靠）
+        # target_price 和 contact 留给正常多轮流程（避免 LLM 把型号误当价格）
+        if not state.lead_in_progress and len(user_query) > 6:
+            for field_key in ("product_requirement", "quantity"):
+                if not lead_info.get(field_key):
                     try:
                         extracted = await extract_info(
-                            user_query, field["key"], language
+                            user_query, field_key, language
                         )
                         if extracted and extracted.strip() and len(extracted.strip()) > 1:
-                            lead_info[field["key"]] = extracted
+                            lead_info[field_key] = extracted
                             logger.debug(
-                                f"[LeadCapture] Pre-extracted {field['key']}: {extracted[:30]}"
+                                f"[LeadCapture] Pre-extracted {field_key}: {extracted[:30]}"
                             )
                     except Exception as ex:
                         logger.warning(f"[LeadCapture] pre-extract failed: {ex}")
@@ -665,16 +668,19 @@ _LEAD_STATE_PREFIX = "lead_state:"
 _LEAD_STATE_TTL = 3600  # 1 小时未完成自动清除
 
 
-async def _load_lead_state(session_id: str) -> dict:
+async def _load_lead_state(session_id: str):
+    """加载 lead_state；返回 None 表示无 session，dict（含空 dict）表示进行中"""
     if _redis is None:
-        return {}
+        return None
     try:
         import json
         raw = await _redis.get(_LEAD_STATE_PREFIX + session_id)
-        return json.loads(raw) if raw else {}
+        if raw is None:
+            return None
+        return json.loads(raw)
     except Exception as e:
         logger.warning(f"lead_state load error: {e}")
-        return {}
+        return None
 
 
 async def _save_lead_state(session_id: str, lead_info: dict) -> None:

@@ -114,8 +114,10 @@ async def classify_user_reply(
 async def extract_info(user_reply: str, field_key: str, language: str) -> str:
     """从用户回复中提取对应字段的值。返回空字符串表示提取失败。"""
     prompt = (
-        f"从以下用户回复中提取「{field_key}」字段的值，只返回提取的值本身，"
-        f"不要解释。如果用户回复中没有相关信息则返回空字符串：\n{user_reply}"
+        f"从以下用户回复中提取「{field_key}」字段的值。"
+        f"严格要求：只有当用户明确提到了该字段的具体值时才提取，"
+        f"不要推测或猜测。如果用户没有明确提到则返回空字符串。"
+        f"只返回提取的值本身，不要解释。\n用户回复：{user_reply}"
     )
     try:
         client = AsyncOpenAI(
